@@ -13,6 +13,7 @@ import "@xyflow/react/dist/style.css";
 import "./tokens.css";
 import "./App.css";
 import { layoutDiagram } from "@diagram-copilot/layout";
+import { EmptyState, shouldShowEmptyState } from "./components/EmptyState.js";
 import { ExportMenu } from "./components/ExportMenu.js";
 import { StatusPill } from "./components/StatusPill.js";
 import { Toolbar } from "./components/Toolbar.js";
@@ -29,15 +30,22 @@ export const APP_TITLE = "diagram-copilot";
  *  (e.g. fast-typed edits) collapses into one fit instead of racing. */
 const FIT_VIEW_DEBOUNCE_MS = 100;
 
+/** How long an ELK layout pass must run before the "⋯ layout" chip appears —
+ *  fast layouts (the common case) never flash it. */
+const LAYOUT_INDICATOR_DELAY_MS = 200;
+
 const nodeTypes = { [ARCH_NODE_TYPE]: ArchNode, [ARCH_GROUP_TYPE]: ArchGroup };
 const edgeTypes = { [ELK_EDGE_TYPE]: ElkEdge };
 
 function DiagramCanvas() {
-  const { status, lastDiagram, lastError, send } = useDiagramConnection();
+  const { status, lastDiagram, lastError, workspace, send } = useDiagramConnection();
   const [flow, setFlow] = useState<{ nodes: Node[]; edges: Edge[] }>({ nodes: [], edges: [] });
   const [prefs, setPrefs] = useState<LayoutPrefs>(() => loadLayoutPrefs());
   const [drawerOpen, setDrawerOpen] = useState(false);
   const toggleDrawer = useCallback(() => setDrawerOpen((o) => !o), []);
+  // Bottom-right "⋯ layout" chip — on only while a layout pass is running
+  // past LAYOUT_INDICATOR_DELAY_MS (see the layout effect below).
+  const [layingOut, setLayingOut] = useState(false);
   const { fitView } = useReactFlow();
 
   useEffect(() => {
@@ -45,17 +53,29 @@ function DiagramCanvas() {
   }, [prefs]);
 
   useEffect(() => {
-    if (!lastDiagram) return;
+    if (!lastDiagram) {
+      setLayingOut(false);
+      return;
+    }
     let stale = false;
     const { doc, options } = applyPrefs(lastDiagram.doc, prefs);
+    const indicatorId = window.setTimeout(() => {
+      if (!stale) setLayingOut(true);
+    }, LAYOUT_INDICATOR_DELAY_MS);
     layoutDiagram(doc, options)
       .then((graph) => {
         if (stale) return;
         setFlow(toFlow(doc, graph));
       })
-      .catch((err) => console.error("layout failed", err));
+      .catch((err) => console.error("layout failed", err))
+      .finally(() => {
+        if (stale) return;
+        window.clearTimeout(indicatorId);
+        setLayingOut(false);
+      });
     return () => {
       stale = true;
+      window.clearTimeout(indicatorId);
     };
   }, [lastDiagram, prefs]);
 
@@ -131,6 +151,14 @@ function DiagramCanvas() {
         <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="var(--grid-dot)" />
         <Controls />
       </ReactFlow>
+      {workspace && shouldShowEmptyState(workspace, lastDiagram) && (
+        <EmptyState workspace={workspace} send={send} />
+      )}
+      {layingOut && (
+        <div className="layout-chip" role="status">
+          ⋯ layout
+        </div>
+      )}
       <StatusPill status={status} />
       <Drawer open={drawerOpen} onToggle={toggleDrawer} diagram={lastDiagram} send={send} />
     </div>
