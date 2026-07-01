@@ -1,0 +1,12 @@
+direction right
+
+Client
+CDN
+API Server
+Postgres
+Redis
+
+Client > CDN
+CDN > API Server
+API Server > Redis: cache
+API Server > Postgres: query

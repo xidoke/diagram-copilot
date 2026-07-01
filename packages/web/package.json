@@ -12,7 +12,8 @@
     "@diagram-copilot/core": "workspace:*",
     "@xyflow/react": "^12",
     "react": "^18",
-    "react-dom": "^18"
+    "react-dom": "^18",
+    "@diagram-copilot/layout": "workspace:*"
   },
   "devDependencies": {
     "@types/react": "^18",

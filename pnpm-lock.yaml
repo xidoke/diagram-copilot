@@ -96,6 +96,9 @@ importers:
       '@diagram-copilot/core':
         specifier: workspace:*
         version: link:../core
+      '@diagram-copilot/layout':
+        specifier: workspace:*
+        version: link:../layout
       '@xyflow/react':
         specifier: ^12
         version: 12.11.1(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
