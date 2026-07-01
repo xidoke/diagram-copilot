@@ -5,6 +5,13 @@
   "type": "module",
   "main": "./dist/server.js",
   "types": "./dist/server.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/server.d.ts",
+      "development": "./src/server.ts",
+      "default": "./dist/server.js"
+    }
+  },
   "bin": {
     "diagram-copilot-server": "./dist/index.js"
   },
