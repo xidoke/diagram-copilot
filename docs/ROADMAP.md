@@ -141,8 +141,8 @@ Publish sơ đồ thành web page tĩnh share được · template/community gal
 |---|---|---|
 | v0.0 Spike | ✅ 2026-07-02 | GO — React Flow+ELK |
 | v0.1 Walking Skeleton | ✅ 2026-07-02 | tag `v0.1` — T1→T8, 149 test, demo live re-render (docs/demos/). Langium OK không cần escape hatch. Vibe song song: 5 worker/wave chạy tốt |
-| v0.2 Beautiful Core | ⬜ | |
-| v0.3 Copilot Loop | ⬜ | |
-| v0.4 Daily Driver | ⬜ | |
-| v0.5 Learning Pack | ⬜ | |
-| v1.0 Prod-grade | ⬜ | |
+| v0.2 Beautiful Core | ✅ 2026-07-02 | T9-T16 + T-FIX: groups+attrs, icons, ELK bend-point edges (dist=0.0px verify). **Chờ T17 visual QA — mắt Đô** |
+| v0.3 Copilot Loop | ✅ 2026-07-02 | tag `v0.3` — 11 MCP tools, claude -p headless THẬT drive canvas (docs/demos/t25-claude-drove-canvas.png). Guide eval 5/6 first-try |
+| v0.4 Daily Driver | 🟡 gần xong | drawer Monaco+highlight+markers, picker, export client+server, drag overrides, undo/redo, empty state. **Chờ T32 dogfood — Đô dùng thật** |
+| v0.5 Learning Pack | 🟡 một phần | snapshot_diagram tool ✅, tsx watch ✅, T-FIX ✅; còn steps navigation UI + polish pass |
+| v1.0 Prod-grade | 🟡 bắt đầu | CI workflow ✅ (chờ push GitHub); T38 packaging đang chạy; còn npx+README GIF+license pass |
