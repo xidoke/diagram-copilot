@@ -61,6 +61,55 @@ body {
   color: var(--text-strong);
 }
 
+/* Floating layout toolbar — top-right */
+.toolbar {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  z-index: 10;
+  display: flex;
+  gap: 8px;
+  background: var(--panel-translucent);
+  border: 1px solid var(--border);
+  padding: 6px;
+  border-radius: 8px;
+  backdrop-filter: blur(6px);
+}
+.toolbar-group {
+  display: flex;
+  gap: 2px;
+}
+.toolbar-btn {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+.toolbar-btn:hover {
+  border-color: var(--border);
+  color: var(--text);
+}
+.toolbar-btn--active {
+  background: var(--status-connected-bg);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.toolbar-btn--auto {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
 /* Floating status pill — bottom center */
 .status-pill {
   position: fixed;
