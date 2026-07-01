@@ -12,14 +12,18 @@
  * stateful sessions: keep a `Map<sessionId, transport>` and pass
  * `sessionIdGenerator: () => randomUUID()`.
  *
- * Tool registration is centralized in {@link registerTools} so follow-up
- * tasks (T19 `get_diagram`/`put_diagram`, T20 …) plug in by adding one
- * `server.registerTool(...)` block that reads live state via
+ * Tool registration is centralized in {@link registerTools}: `ping` is
+ * inline here, while `get_dsl_guide` (`./tools/guide.ts`) and `list_icons`
+ * (`./tools/icons.ts`, T19) each live in their own module and are wired in
+ * with one `register*Tool(server)` call. Follow-up tasks (`get_diagram`/
+ * `put_diagram`, T20 …) plug in the same way, reading live state via
  * {@link McpHandlerOptions.getInfo} (or sibling getters added to the options).
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { registerGetDslGuideTool } from "./tools/guide.js";
+import { registerListIconsTool } from "./tools/icons.js";
 
 /** MCP server identity advertised in the `initialize` result. */
 export const MCP_SERVER_NAME = "diagram-copilot";
@@ -70,6 +74,8 @@ function registerTools(server: McpServer, options: McpHandlerOptions): void {
       };
     },
   );
+  registerGetDslGuideTool(server);
+  registerListIconsTool(server);
 }
 
 /**
