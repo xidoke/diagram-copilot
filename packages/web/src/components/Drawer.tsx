@@ -4,22 +4,78 @@
  * full viewport. A vertical toggle tab rides the drawer's right edge; ⌘E /
  * Ctrl+E toggles it from anywhere.
  *
- * The editor is Monaco (`@monaco-editor/react`, language `plaintext` — DSL
- * syntax highlighting is a later task). All non-visual logic — deciding when a
+ * The editor is Monaco (`@monaco-editor/react`), self-hosted (see
+ * `configureSelfHostedMonaco` below — no CDN fetch, so the drawer works
+ * with no network) with `arch-dsl` syntax highlighting (`dslLanguage.ts`)
+ * and inline error markers (`drawerMarkers.ts`) sourced from the server's
+ * `diagram-error` messages. All non-visual sync logic — deciding when a
  * remote diagram may overwrite the buffer, and debouncing outbound edits —
  * lives in the DOM-free `drawerSync.ts` so it stays unit-testable.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import Editor, { type BeforeMount, type OnMount } from "@monaco-editor/react";
+import Editor, { loader, type BeforeMount, type Monaco, type OnMount } from "@monaco-editor/react";
+// Type-only — erased at compile time, so (unlike a value import) this never
+// pulls the real `monaco-editor` package into the runtime module graph. See
+// `configureSelfHostedMonaco` above for why that matters under vitest.
 import type { editor } from "monaco-editor";
-import type { ClientMessage, DiagramMessage } from "@diagram-copilot/core";
+import type { ClientMessage, DiagramErrorMessage, DiagramMessage } from "@diagram-copilot/core";
 import {
   KEYSTROKE_GRACE_MS,
   makeUpdateSender,
   shouldApplyRemote,
   type UpdateSender,
 } from "./drawerSync.js";
+import { errorsToMarkers, MARKER_OWNER } from "./drawerMarkers.js";
+import { ARCH_DSL_LANGUAGE_ID, archDslThemeRules, registerArchDslLanguage } from "./dslLanguage.js";
 import "./drawer.css";
+
+// Deliberately no top-level `import * as monaco from "monaco-editor"` here:
+// the real package touches `window`/browser globals as soon as its module
+// graph is evaluated (it's a full editor, not a data module like
+// `dslLanguage.ts`), which crashes under the project's plain-Node vitest
+// setup the instant anything imports `Drawer.tsx` — even a test that never
+// renders it, like `App.test.tsx`. `configureSelfHostedMonaco` below
+// dynamically imports it instead, from inside a `useEffect` that only ever
+// runs in a real mounted browser, and every other Monaco API call in this
+// file goes through the `Monaco` instance `@monaco-editor/react` hands to
+// `beforeMount`/`onMount` (see `monacoRef`) rather than a module-level
+// reference.
+let selfHostConfigured = false;
+
+/** Shape of `monaco.Environment` (the `getWorker` case only — that's all
+ *  this app needs); declared locally rather than imported from
+ *  `monaco-editor` so this stays a type-only concern, not a value import. */
+interface MinimalMonacoEnvironment {
+  getWorker: () => Worker;
+}
+
+/**
+ * Points `@monaco-editor/react`'s loader at the `monaco-editor` package
+ * bundled by Vite (dynamic `import()`s — bundled locally, not fetched at
+ * runtime) instead of its default cdn.jsdelivr.net fetch, and wires up the
+ * editor's web worker via Vite's `?worker` import. Only
+ * `editorWorkerService` is needed: `arch-dsl` has no TS/JSON/CSS language
+ * services to offload to a worker. Idempotent; safe to call from every
+ * `Drawer` mount (e.g. React StrictMode's double-invoke).
+ */
+async function configureSelfHostedMonaco(): Promise<void> {
+  if (selfHostConfigured) return;
+  selfHostConfigured = true;
+  const [monaco, { default: EditorWorker }] = await Promise.all([
+    import("monaco-editor"),
+    import("monaco-editor/esm/vs/editor/editor.worker?worker"),
+  ]);
+  loader.config({ monaco });
+  // `MonacoEnvironment` is only declared on `Window` (via monaco-editor's
+  // own ambient types), not on `typeof globalThis` — cast rather than use
+  // `self` directly, matching how monaco's own worker factory reads it
+  // (`globalThis.MonacoEnvironment`, see `defaultWorkerFactory.js`).
+  (
+    globalThis as typeof globalThis & { MonacoEnvironment?: MinimalMonacoEnvironment }
+  ).MonacoEnvironment = {
+    getWorker: () => new EditorWorker(),
+  };
+}
 
 /** Registered once via `beforeMount`; keeps the editor background flush with
  *  the `--panel` surface so it reads as part of the drawer, not a widget. */
@@ -34,9 +90,13 @@ export interface DrawerProps {
   diagram: DiagramMessage | null;
   /** Outbound sink (from `useDiagramConnection`). */
   send: (message: ClientMessage) => void;
+  /** Latest parse/validation failure from the server, or `null`/`undefined`
+   *  if none has arrived yet. Rendered as Monaco error markers (see
+   *  `drawerMarkers.ts`) scoped to whichever diagram is currently open. */
+  lastError?: DiagramErrorMessage | null;
 }
 
-export function Drawer({ open, onToggle, diagram, send }: DrawerProps) {
+export function Drawer({ open, onToggle, diagram, send, lastError }: DrawerProps) {
   // Editor text lives in React state (controlled Monaco) so it survives the
   // editor being unmounted while the drawer is closed.
   const [value, setValue] = useState<string>(diagram?.dsl ?? "");
@@ -48,10 +108,22 @@ export function Drawer({ open, onToggle, diagram, send }: DrawerProps) {
   const [everOpened, setEverOpened] = useState(open);
 
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
+  // Populated by `handleBeforeMount` — the one and only `Monaco` reference
+  // this component uses (no module-level import; see the top of the file).
+  const monacoRef = useRef<Monaco | null>(null);
   const focusedRef = useRef(false);
   const lastKeystrokeRef = useRef(0);
   // Read inside the sender's `getMeta` at flush time — always the freshest.
   const diagramRef = useRef<DiagramMessage | null>(diagram);
+  // Read inside `handleMount` so an error that arrived before the editor
+  // first mounted (drawer opened after the fact) still gets markers.
+  const lastErrorRef = useRef<DiagramErrorMessage | null>(lastError ?? null);
+  // Version of the diagram the currently-displayed markers were raised
+  // against; `null` when no markers are showing. Lets the "clear on a newer
+  // good diagram" effect below tell a genuinely-fixed diagram apart from an
+  // unrelated/stale broadcast (spec: error.version is the last ACCEPTED
+  // version, so a fix arrives with a strictly greater one).
+  const errorVersionRef = useRef<number | null>(null);
   const senderRef = useRef<UpdateSender | null>(null);
 
   useEffect(() => {
@@ -59,8 +131,21 @@ export function Drawer({ open, onToggle, diagram, send }: DrawerProps) {
   }, [diagram]);
 
   useEffect(() => {
+    lastErrorRef.current = lastError ?? null;
+  }, [lastError]);
+
+  useEffect(() => {
     if (open) setEverOpened(true);
   }, [open]);
+
+  // `Drawer` is always mounted by `App.tsx` (its own open/close state just
+  // toggles a CSS class), so this fires as soon as the app loads — well
+  // before the editor is ever lazily mounted (see `everOpened`) — ensuring
+  // the loader is self-host-configured before any `<Editor>` could ask it
+  // to fetch from the CDN.
+  useEffect(() => {
+    void configureSelfHostedMonaco();
+  }, []);
 
   // One sender for the component's lifetime. `send` is stable (see
   // useDiagramConnection), so capturing it once is safe.
@@ -108,11 +193,52 @@ export function Drawer({ open, onToggle, diagram, send }: DrawerProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [diagram]);
 
-  const handleBeforeMount = useCallback<BeforeMount>((monaco) => {
-    monaco.editor.defineTheme(MONACO_THEME, {
+  // Renders `err` as markers on `model` if it targets the diagram currently
+  // open (or no diagram is open yet to compare against) — shared by the
+  // mount handler (catches an error that arrived before the editor existed)
+  // and the effect below (catches one that arrives while it's mounted).
+  const applyErrorMarkers = useCallback(
+    (err: DiagramErrorMessage | null, model: editor.ITextModel | null | undefined) => {
+      if (!err || !model) return;
+      const openDiagram = diagramRef.current;
+      if (openDiagram && err.name !== openDiagram.name) return;
+      monacoRef.current?.editor.setModelMarkers(
+        model,
+        MARKER_OWNER,
+        errorsToMarkers(err.parseErrors, err.modelErrors),
+      );
+      errorVersionRef.current = err.version;
+    },
+    [],
+  );
+
+  // Server → markers. New parse/model errors land here; see
+  // `applyErrorMarkers` for the "same diagram" guard.
+  useEffect(() => {
+    applyErrorMarkers(lastError ?? null, editorRef.current?.getModel());
+  }, [lastError, applyErrorMarkers]);
+
+  // A subsequent ACCEPTED diagram strictly newer than the one the current
+  // markers were raised against means the underlying problem is fixed
+  // elsewhere (another client, or this one after a round-trip) — clear them.
+  // Keyed on `diagram` only, like the sync effect above.
+  useEffect(() => {
+    if (!diagram) return;
+    if (errorVersionRef.current === null || diagram.version <= errorVersionRef.current) return;
+    const model = editorRef.current?.getModel();
+    if (!model) return;
+    monacoRef.current?.editor.setModelMarkers(model, MARKER_OWNER, []);
+    errorVersionRef.current = null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [diagram]);
+
+  const handleBeforeMount = useCallback<BeforeMount>((monacoInstance) => {
+    monacoRef.current = monacoInstance;
+    registerArchDslLanguage(monacoInstance);
+    monacoInstance.editor.defineTheme(MONACO_THEME, {
       base: "vs-dark",
       inherit: true,
-      rules: [],
+      rules: [...archDslThemeRules],
       colors: {
         "editor.background": "#141b28", // --panel
         "editor.foreground": "#dfe8ff", // --text
@@ -125,21 +251,35 @@ export function Drawer({ open, onToggle, diagram, send }: DrawerProps) {
     });
   }, []);
 
-  const handleMount = useCallback<OnMount>((instance) => {
-    editorRef.current = instance;
-    instance.onDidFocusEditorText(() => {
-      focusedRef.current = true;
-    });
-    instance.onDidBlurEditorText(() => {
-      focusedRef.current = false;
-    });
-  }, []);
+  const handleMount = useCallback<OnMount>(
+    (instance) => {
+      editorRef.current = instance;
+      instance.onDidFocusEditorText(() => {
+        focusedRef.current = true;
+      });
+      instance.onDidBlurEditorText(() => {
+        focusedRef.current = false;
+      });
+      // Catch an error that arrived while the drawer was still closed (the
+      // editor is lazily mounted — see `everOpened`).
+      applyErrorMarkers(lastErrorRef.current, instance.getModel());
+    },
+    [applyErrorMarkers],
+  );
 
   const handleChange = useCallback((next: string | undefined) => {
     const dsl = next ?? "";
     setValue(dsl);
     lastKeystrokeRef.current = Date.now();
     senderRef.current?.push(dsl);
+    // The user is actively fixing (or diverging from) the errored text —
+    // stale markers would be actively misleading, so drop them immediately
+    // rather than waiting for the next server round-trip.
+    if (errorVersionRef.current !== null) {
+      const model = editorRef.current?.getModel();
+      if (model) monacoRef.current?.editor.setModelMarkers(model, MARKER_OWNER, []);
+      errorVersionRef.current = null;
+    }
   }, []);
 
   // Pull the deferred remote text into the buffer on demand (badge click).
@@ -196,7 +336,7 @@ export function Drawer({ open, onToggle, diagram, send }: DrawerProps) {
           {everOpened && (
             <Editor
               height="100%"
-              language="plaintext"
+              language={ARCH_DSL_LANGUAGE_ID}
               theme={MONACO_THEME}
               value={value}
               onChange={handleChange}
