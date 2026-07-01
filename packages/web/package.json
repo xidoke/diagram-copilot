@@ -14,6 +14,7 @@
     "@monaco-editor/react": "^4.7.0",
     "@xyflow/react": "^12",
     "html-to-image": "^1.11.13",
+    "monaco-editor": "^0.52.0",
     "react": "^18",
     "react-dom": "^18",
     "@diagram-copilot/layout": "workspace:*"
@@ -22,7 +23,6 @@
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "@vitejs/plugin-react": "^4",
-    "monaco-editor": "^0.52.0",
     "typescript": "~5.6",
     "vite": "^5",
     "vitest": "^2"
