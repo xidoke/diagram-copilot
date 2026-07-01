@@ -140,7 +140,7 @@ Publish sơ đồ thành web page tĩnh share được · template/community gal
 | Release | Trạng thái | Ghi chú |
 |---|---|---|
 | v0.0 Spike | ✅ 2026-07-02 | GO — React Flow+ELK |
-| v0.1 Walking Skeleton | ⬜ chưa bắt đầu | |
+| v0.1 Walking Skeleton | ✅ 2026-07-02 | tag `v0.1` — T1→T8, 149 test, demo live re-render (docs/demos/). Langium OK không cần escape hatch. Vibe song song: 5 worker/wave chạy tốt |
 | v0.2 Beautiful Core | ⬜ | |
 | v0.3 Copilot Loop | ⬜ | |
 | v0.4 Daily Driver | ⬜ | |
