@@ -28,6 +28,7 @@ import { registerListIconsTool } from "./tools/icons.js";
 import type { WorkspaceOps } from "../workspace/watcher.js";
 import { registerWorkspaceTools } from "./tools/workspace.js";
 import { registerDiagramTools } from "./tools/diagram.js";
+import { registerSnapshotTool, type SnapshotOps } from "./tools/snapshot.js";
 
 /** MCP server identity advertised in the `initialize` result. */
 export const MCP_SERVER_NAME = "diagram-copilot";
@@ -55,6 +56,12 @@ export interface McpHandlerOptions {
    * not registered).
    */
   getWorkspace?: () => WorkspaceOps | null;
+  /**
+   * Live wiring for `get_snapshot` (T24): the shared snapshot broker plus the
+   * hub's broadcast/client-count and the active diagram name. Omit for a
+   * server without a WS hub (the tool is then not registered).
+   */
+  snapshot?: SnapshotOps;
 }
 
 /** A `node:http` request handler for the `/mcp` route. */
@@ -94,6 +101,10 @@ function registerTools(server: McpServer, options: McpHandlerOptions): void {
     registerWorkspaceTools(server, options.getWorkspace);
     registerDiagramTools(server, options.getWorkspace);
   }
+
+  // Canvas-rendered PNG snapshots (T24) — needs the WS hub, so it plugs in
+  // only when the server was wired with snapshot ops.
+  if (options.snapshot !== undefined) registerSnapshotTool(server, options.snapshot);
 }
 
 /**

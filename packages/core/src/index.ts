@@ -46,6 +46,8 @@ export {
   DiagramMessageSchema,
   OriginSchema,
   ServerMessageSchema,
+  SnapshotRequestMessageSchema,
+  SnapshotResponseMessageSchema,
   UpdateMessageSchema,
   WorkspaceMessageSchema,
   parseClientMessage,
@@ -59,6 +61,8 @@ export {
   type ParseMessageResult,
   type ProtocolMessage,
   type ServerMessage,
+  type SnapshotRequestMessage,
+  type SnapshotResponseMessage,
   type UpdateMessage,
   type WorkspaceMessage,
 } from "./protocol/index.js";

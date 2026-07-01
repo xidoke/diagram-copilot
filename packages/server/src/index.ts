@@ -18,6 +18,7 @@ import { createServer, WELCOME_WORKSPACE, WS_PATH } from "./server.js";
 import { createClientUpdateHandler } from "./client-updates.js";
 import { MCP_PATH } from "./http.js";
 import { createMcpHandler, type McpInfo } from "./mcp/handler.js";
+import { createSnapshotBroker } from "./mcp/snapshot-broker.js";
 import { buildWelcomeMessages, createWorkspaceWatcher, type WorkspaceWatcher } from "./workspace/watcher.js";
 
 /** Fixed default port. Kept in sync with the MCP endpoint registration. */
@@ -111,6 +112,11 @@ async function main(): Promise<void> {
     active: watcher?.getState().active ?? null,
   });
 
+  // Correlates get_snapshot requests with client-rendered PNG responses
+  // (T24). Shared between the MCP tool (createRequest) and the WS hub's
+  // snapshot-response route (resolve).
+  const snapshotBroker = createSnapshotBroker();
+
   const server = createServer({
     port: options.port,
     staticDir: resolveStaticDir(),
@@ -118,12 +124,26 @@ async function main(): Promise<void> {
     // Same mutable-watcher-ref pattern as `getWelcome`/`getMcpInfo`: the
     // watcher is created after the port is secured, so tools read `null` until
     // then and the live `WorkspaceOps` (list/open) afterwards.
-    mcpHandler: createMcpHandler({ getInfo: getMcpInfo, getWorkspace: () => watcher ?? null }),
+    mcpHandler: createMcpHandler({
+      getInfo: getMcpInfo,
+      getWorkspace: () => watcher ?? null,
+      // `server` is referenced lazily (arrow bodies run at tool-call time,
+      // long after this const initializes), so the self-reference is safe.
+      snapshot: {
+        broker: snapshotBroker,
+        broadcast: (message) => server.broadcast(message),
+        clientCount: () => server.clients.size,
+        getActive: () => watcher?.getState().active ?? null,
+      },
+    }),
     // Client (drawer/canvas) update frames → workspace writes with origin
     // routing + echo exclusion + baseVersion conflict handling (T21). Same
     // mutable-watcher-ref pattern: updates arriving before the watcher exists
     // are dropped with a log.
     onClientUpdate: createClientUpdateHandler(() => watcher ?? null),
+    // Canvas-rendered snapshot frames → the broker settles the pending
+    // get_snapshot call awaiting this correlation id (T24).
+    onSnapshotResponse: (message) => void snapshotBroker.resolve(message),
   });
 
   try {

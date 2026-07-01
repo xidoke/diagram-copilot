@@ -20,6 +20,7 @@ import { Toolbar } from "./components/Toolbar.js";
 import { Drawer } from "./components/Drawer.js";
 import { useDiagramConnection } from "./connection/index.js";
 import { applyPrefs, loadLayoutPrefs, saveLayoutPrefs, type LayoutPrefs } from "./render/layoutOptions.js";
+import { setSnapshotProvider } from "./render/snapshotResponder.js";
 import { ArchGroup, ArchNode } from "./render/ArchNode.js";
 import { ELK_EDGE_TYPE, ElkEdge, ElkEdgeMarkerDefs } from "./render/ElkEdge.js";
 import { ARCH_GROUP_TYPE, ARCH_NODE_TYPE, toFlow } from "./render/toFlow.js";
@@ -46,11 +47,18 @@ function DiagramCanvas() {
   // Bottom-right "⋯ layout" chip — on only while a layout pass is running
   // past LAYOUT_INDICATOR_DELAY_MS (see the layout effect below).
   const [layingOut, setLayingOut] = useState(false);
-  const { fitView } = useReactFlow();
+  const { fitView, getNodes, getNodesBounds } = useReactFlow();
 
   useEffect(() => {
     saveLayoutPrefs(prefs);
   }, [prefs]);
+
+  // Give the snapshot responder (T24) access to the live node bbox — only
+  // this component sits inside the ReactFlowProvider, so it owns the getter.
+  useEffect(() => {
+    setSnapshotProvider(() => getNodesBounds(getNodes()));
+    return () => setSnapshotProvider(null);
+  }, [getNodes, getNodesBounds]);
 
   useEffect(() => {
     if (!lastDiagram) {

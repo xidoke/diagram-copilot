@@ -31,6 +31,11 @@ export function applyServerMessage(
       return { ...state, lastError: message };
     case "workspace":
       return { ...state, workspace: message };
+    case "snapshot-request":
+      // Transient request/response frame (added by T24) — handled by the
+      // snapshot responder via the manager's onMessage subscription, not
+      // stored in connection state.
+      return state;
     default: {
       const exhaustive: never = message;
       return exhaustive;

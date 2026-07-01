@@ -8,6 +8,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ClientMessage } from "@diagram-copilot/core";
+import { attachSnapshotResponder } from "../render/snapshotResponder.js";
 import { createConnectionManager, type ConnectionManager } from "./connectionManager.js";
 import { initialConnectionState } from "./messageReducer.js";
 import type { DiagramConnectionState } from "./types.js";
@@ -44,8 +45,13 @@ export function useDiagramConnection(url: string = resolveWsUrl()): DiagramConne
 
   useEffect(() => {
     const manager = createConnectionManager({ url, onStateChange: setState });
+    // Answer server `snapshot-request` frames with canvas-rendered PNGs
+    // (T24) — bounds come from the provider App registers via
+    // setSnapshotProvider; the responder stays silent until it exists.
+    const detachSnapshotResponder = attachSnapshotResponder(manager);
     managerRef.current = manager;
     return () => {
+      detachSnapshotResponder();
       manager.close();
       managerRef.current = null;
     };
