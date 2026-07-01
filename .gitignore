@@ -1,0 +1,16 @@
+node_modules/
+dist/
+build/
+*.log
+.DS_Store
+.env
+.env.*
+
+# session/tool artifacts
+.superpowers/
+.playwright-mcp/
+.worktrees/
+.codegraph/
+
+# local workspace data (diagram files của người dùng, không phải source)
+workspace/
