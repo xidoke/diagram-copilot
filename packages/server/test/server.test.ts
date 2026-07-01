@@ -3,7 +3,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
-import { parseServerMessage, type ServerMessage } from "@diagram-copilot/core";
+import {
+  parseServerMessage,
+  serializeMessage,
+  type ServerMessage,
+  type UpdateMessage,
+} from "@diagram-copilot/core";
 import { createServer, WELCOME_WORKSPACE, WS_PATH, type ServerHandle } from "../src/server.js";
 
 /** Track servers/sockets so every test tears down cleanly. */
@@ -95,6 +100,72 @@ describe("createServer — websocket hub", () => {
     socket.send(JSON.stringify({ kind: "bogus" }));
 
     // The hub is still healthy: a follow-up broadcast is delivered.
+    const next = nextMessage(socket);
+    server.broadcast({ kind: "workspace", diagrams: ["x"], active: "x" });
+    await expect(next).resolves.toMatchObject({ kind: "workspace", active: "x" });
+  });
+});
+
+describe("createServer — client update routing", () => {
+  /** Poll `check` until it passes or the timeout elapses. */
+  async function waitFor(check: () => void, timeoutMs = 1000): Promise<void> {
+    const start = Date.now();
+    for (;;) {
+      try {
+        check();
+        return;
+      } catch (error) {
+        if (Date.now() - start > timeoutMs) throw error;
+        await new Promise((r) => setTimeout(r, 20));
+      }
+    }
+  }
+
+  const UPDATE: UpdateMessage = {
+    kind: "update",
+    name: "demo",
+    dsl: "direction right\n",
+    origin: "drawer",
+    baseVersion: 1,
+  };
+
+  it("routes a valid update frame to onClientUpdate with the sending socket", async () => {
+    const received: Array<{ message: UpdateMessage; sender: WebSocket }> = [];
+    const server = createServer({
+      port: 0,
+      onClientUpdate: (message, sender) => received.push({ message, sender }),
+    });
+    openServers.add(server);
+    const { port } = await server.start();
+    const socket = await connectReady(port);
+
+    socket.send(serializeMessage(UPDATE));
+
+    await waitFor(() => expect(received).toHaveLength(1));
+    expect(received[0].message).toEqual(UPDATE);
+    // The sender handed to the handler is the hub-side socket of the client
+    // that sent the frame — the handle broadcast exclusion needs.
+    expect(server.clients.has(received[0].sender)).toBe(true);
+  });
+
+  it("does not route invalid frames, and survives a throwing handler", async () => {
+    let calls = 0;
+    const server = createServer({
+      port: 0,
+      onClientUpdate: () => {
+        calls += 1;
+        throw new Error("boom");
+      },
+    });
+    openServers.add(server);
+    const { port } = await server.start();
+    const socket = await connectReady(port);
+
+    socket.send(JSON.stringify({ kind: "update", name: "demo" })); // schema-invalid
+    socket.send(serializeMessage(UPDATE)); // valid → handler throws
+
+    await waitFor(() => expect(calls).toBe(1));
+    // Hub is still alive: a follow-up broadcast reaches the client.
     const next = nextMessage(socket);
     server.broadcast({ kind: "workspace", diagrams: ["x"], active: "x" });
     await expect(next).resolves.toMatchObject({ kind: "workspace", active: "x" });

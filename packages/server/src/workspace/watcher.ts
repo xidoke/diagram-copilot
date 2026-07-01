@@ -11,6 +11,7 @@
 import { mkdirSync, readFileSync, readdirSync, writeFileSync, type Dirent } from "node:fs";
 import path from "node:path";
 import { watch as watchDir, type FSWatcher } from "chokidar";
+import type { WebSocket } from "ws";
 import {
   ARCH_EXT,
   diagramNameFromFile,
@@ -18,9 +19,11 @@ import {
   parseDsl,
   type DiagramDoc,
   type DiagramMessage,
+  type Origin,
   type ServerMessage,
   type WorkspaceMessage,
 } from "@diagram-copilot/core";
+import type { BroadcastOptions } from "../server.js";
 
 /** How long to wait after the last fs event on a given file before acting on it. */
 const DEBOUNCE_MS = 150;
@@ -28,8 +31,12 @@ const DEBOUNCE_MS = 150;
 export interface WorkspaceWatcherOptions {
   /** Workspace directory to scan/watch. Created if missing. */
   dir: string;
-  /** Send a message to every connected client (typically `ServerHandle.broadcast`). */
-  broadcast: (message: ServerMessage) => void;
+  /**
+   * Send a message to connected clients (typically `ServerHandle.broadcast`).
+   * The optional {@link BroadcastOptions} let {@link WorkspaceOps.update}
+   * exclude the originating socket (echo-loop prevention).
+   */
+  broadcast: (message: ServerMessage, options?: BroadcastOptions) => void;
 }
 
 /** Snapshot of what the watcher currently knows about the workspace. */
@@ -88,6 +95,24 @@ export interface ReadResult {
   error?: string;
 }
 
+/** Options for {@link WorkspaceOps.update} — who made the change, and who must not hear it back. */
+export interface UpdateOptions {
+  /**
+   * Which side produced this change; tagged on the broadcast `diagram` frame
+   * so clients can tell their own edits from everyone else's. Defaults to
+   * `"mcp"` — the MCP tool path, this function's original caller.
+   */
+  origin?: Origin;
+  /**
+   * The connected socket that originated this change. It is excluded from the
+   * `diagram` broadcast (the originator already has this content locally —
+   * echoing it back would fight its in-flight edits). Workspace frames are
+   * NOT excluded: a list/active change is shared state the originator needs
+   * too, and carries none of its own content, so there is no echo loop.
+   */
+  excludeSocket?: WebSocket;
+}
+
 /** Outcome of {@link WorkspaceOps.update}. */
 export interface UpdateResult {
   /** `true` when the DSL was written and broadcast. */
@@ -120,12 +145,14 @@ export interface WorkspaceOps {
   read(name: string): ReadResult;
   /**
    * Write already-validated `dsl` to `name`, bump its version, make it active,
-   * and broadcast a `diagram` frame with origin `mcp` immediately (no waiting
-   * on the debounced fs watcher). Callers MUST have validated `dsl` via
-   * `parseDsl`; an invalid `dsl` is refused without writing. The file must
-   * already exist — create a new diagram with {@link open} first.
+   * and broadcast a `diagram` frame immediately (no waiting on the debounced
+   * fs watcher). The frame carries `opts.origin` (default `mcp`) and skips
+   * `opts.excludeSocket` (echo-loop prevention for client-originated writes).
+   * Callers MUST have validated `dsl` via `parseDsl`; an invalid `dsl` is
+   * refused without writing. The file must already exist — create a new
+   * diagram with {@link open} first.
    */
-  update(name: string, dsl: string): UpdateResult;
+  update(name: string, dsl: string, opts?: UpdateOptions): UpdateResult;
 }
 
 export interface WorkspaceWatcher extends WorkspaceOps {
@@ -442,7 +469,7 @@ export function createWorkspaceWatcher(options: WorkspaceWatcherOptions): Worksp
     }
   }
 
-  function update(name: string, dsl: string): UpdateResult {
+  function update(name: string, dsl: string, opts?: UpdateOptions): UpdateResult {
     const validated = validateDiagramName(name);
     if (!validated.ok) {
       return { ok: false, name, version: versions.get(name) ?? 0, error: validated.error };
@@ -469,8 +496,10 @@ export function createWorkspaceWatcher(options: WorkspaceWatcherOptions): Worksp
     // recognized and suppressed (no double bump, no duplicate frame).
     lastBroadcastContent.set(stem, dsl);
 
-    // An MCP write surfaces its diagram on the canvas: make it sticky-active and
+    // A write surfaces its diagram on the canvas: make it sticky-active and
     // push a workspace update only when that actually changes the active pick.
+    // The workspace frame goes to EVERYONE (including the originator): it is
+    // shared list/active state, not an echo of the originator's content.
     const activeChanged = active !== stem;
     stickyActive = stem;
     active = resolveActive();
@@ -480,11 +509,13 @@ export function createWorkspaceWatcher(options: WorkspaceWatcherOptions): Worksp
       kind: "diagram",
       name: stem,
       version: nextVersion,
-      origin: "mcp",
+      origin: opts?.origin ?? "mcp",
       dsl,
       doc: result.doc,
     };
-    broadcast(message);
+    // Only the diagram frame skips the originator — sending its own content
+    // back would race whatever it typed since (the echo loop this task kills).
+    broadcast(message, opts?.excludeSocket ? { excludeOrigin: opts.excludeSocket } : undefined);
 
     return { ok: true, name: stem, version: nextVersion, doc: result.doc };
   }

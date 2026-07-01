@@ -12,6 +12,7 @@ import {
   parseClientMessage,
   serializeMessage,
   type ServerMessage,
+  type UpdateMessage,
   type WorkspaceMessage,
 } from "@diagram-copilot/core";
 import { createRequestHandler } from "./http.js";
@@ -51,6 +52,16 @@ export interface CreateServerOptions {
    * through to the static pipeline (servers without MCP, e.g. most tests).
    */
   mcpHandler?: McpRequestHandler;
+  /**
+   * Handler for a schema-valid `update` frame from a connected client,
+   * receiving the parsed message and the sending socket (so the workspace
+   * layer can exclude the originator from the resulting broadcast, and send
+   * per-client error/re-sync frames). Typically `createClientUpdateHandler`
+   * from `client-updates.ts`, wired by the CLI entry. Omitted → valid update
+   * frames are logged and dropped (servers without a workspace, e.g. most
+   * tests, stay inert).
+   */
+  onClientUpdate?: (message: UpdateMessage, sender: WebSocket) => void;
 }
 
 export interface BroadcastOptions {
@@ -134,9 +145,21 @@ export function createServer(options: CreateServerOptions): ServerHandle {
         console.warn(`[server] ignoring invalid client message: ${result.error}`);
         return;
       }
-      // v0.1 accepts the frame but does not yet apply updates (no workspace
-      // write path). Later tasks validate + rebroadcast here.
-      console.log(`[server] received ${result.message.kind} message (unhandled in v0.1)`);
+      const message = result.message;
+      if (message.kind === "update") {
+        if (!options.onClientUpdate) {
+          console.log(`[server] received update message (no update handler wired)`);
+          return;
+        }
+        // Shield the hub: a throwing handler must not take down the socket's
+        // message pump (an uncaught throw inside a ws 'message' listener
+        // crashes the process).
+        try {
+          options.onClientUpdate(message, socket);
+        } catch (error) {
+          console.error("[server] client update handler failed:", error);
+        }
+      }
     });
 
     const forget = () => clients.delete(socket);
