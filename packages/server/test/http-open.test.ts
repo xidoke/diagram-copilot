@@ -54,7 +54,7 @@ async function startServer(options?: { withWatcher?: boolean }): Promise<{ url: 
 
   // Same mutable-watcher-ref pattern the CLI entry uses for mcpHandler/getWelcome.
   const getWorkspace = () => watcher;
-  const handler = createRequestHandler(undefined, undefined, createOpenHandler(getWorkspace));
+  const handler = createRequestHandler(undefined, undefined, undefined, createOpenHandler(getWorkspace));
   const server = http.createServer(handler);
   openServers.add(server);
 
@@ -166,7 +166,7 @@ describe("POST /api/open", () => {
       res.writeHead(200);
       res.end("mcp");
     };
-    const handler = createRequestHandler(undefined, mcpHandler, createOpenHandler(() => watcher));
+    const handler = createRequestHandler(undefined, mcpHandler, undefined, createOpenHandler(() => watcher));
     const server = http.createServer(handler);
     openServers.add(server);
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
