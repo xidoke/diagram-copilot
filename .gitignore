@@ -13,4 +13,5 @@ build/
 .codegraph/
 
 # local workspace data (diagram files của người dùng, không phải source)
-workspace/
+# anchored: chỉ match ở repo root, không match packages/*/src/workspace/
+/workspace/
