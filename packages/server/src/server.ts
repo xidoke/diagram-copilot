@@ -15,6 +15,7 @@ import {
   type WorkspaceMessage,
 } from "@diagram-copilot/core";
 import { createRequestHandler } from "./http.js";
+import type { McpRequestHandler } from "./mcp/handler.js";
 
 /** WebSocket upgrade path. Everything else on the port is HTTP. */
 export const WS_PATH = "/ws";
@@ -44,6 +45,12 @@ export interface CreateServerOptions {
    * without a workspace watcher (e.g. most tests) keep the old behavior.
    */
   getWelcome?: () => ServerMessage[];
+  /**
+   * Handler for the MCP Streamable HTTP endpoint (`/mcp`), built with
+   * `createMcpHandler` from `mcp/handler.ts`. Omitted → the route falls
+   * through to the static pipeline (servers without MCP, e.g. most tests).
+   */
+  mcpHandler?: McpRequestHandler;
 }
 
 export interface BroadcastOptions {
@@ -80,7 +87,9 @@ export interface ServerHandle {
  * {@link ServerHandle.start} is called.
  */
 export function createServer(options: CreateServerOptions): ServerHandle {
-  const httpServer = http.createServer(createRequestHandler(options.staticDir));
+  const httpServer = http.createServer(
+    createRequestHandler(options.staticDir, options.mcpHandler),
+  );
   const clients = new Set<WebSocket>();
 
   // `noServer` (rather than `{ server }`) keeps `ws` from attaching its own

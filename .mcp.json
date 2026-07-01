@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "diagram-copilot": {
+      "type": "http",
+      "url": "http://localhost:4747/mcp"
+    }
+  }
+}

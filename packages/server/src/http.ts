@@ -10,6 +10,12 @@ import { createReadStream, statSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 
+/**
+ * Route for the MCP Streamable HTTP endpoint (Claude Code). Kept here so the
+ * router owns its paths; the handler itself lives in `mcp/handler.ts`.
+ */
+export const MCP_PATH = "/mcp";
+
 /** Shown when `packages/web/dist` is missing (web app not built yet). */
 export const FALLBACK_HTML = `<!doctype html>
 <html lang="en">
@@ -109,11 +115,23 @@ function sendFile(res: ServerResponse, method: string, filePath: string, size: n
  * `staticDir`, falling back to {@link FALLBACK_HTML} when the bundle is
  * absent. Unknown routes resolve to `index.html` (SPA-style) when it
  * exists, so client-side routing works.
+ *
+ * When `mcpHandler` is provided, requests to {@link MCP_PATH} (any method —
+ * the handler owns its own method policy) are forwarded to it instead of
+ * the static pipeline.
  */
 export function createRequestHandler(
   staticDir?: string,
+  mcpHandler?: (req: IncomingMessage, res: ServerResponse) => Promise<void>,
 ): (req: IncomingMessage, res: ServerResponse) => void {
   return (req, res) => {
+    const url = new URL(req.url ?? "/", "http://localhost");
+
+    if (mcpHandler && url.pathname === MCP_PATH) {
+      void mcpHandler(req, res);
+      return;
+    }
+
     const method = req.method ?? "GET";
     if (method !== "GET" && method !== "HEAD") {
       res.writeHead(405, { "content-type": "text/plain; charset=utf-8" });
@@ -127,7 +145,6 @@ export function createRequestHandler(
       return;
     }
 
-    const url = new URL(req.url ?? "/", "http://localhost");
     const pathname = url.pathname === "/" ? "/index.html" : url.pathname;
 
     const resolved = resolveWithin(staticDir, pathname);

@@ -9,11 +9,14 @@
  * surprise port would break Claude Code's connection.
  */
 import { parseArgs } from "node:util";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ServerMessage } from "@diagram-copilot/core";
 import { createServer, WELCOME_WORKSPACE, WS_PATH } from "./server.js";
+import { MCP_PATH } from "./http.js";
+import { createMcpHandler, type McpInfo } from "./mcp/handler.js";
 import { buildWelcomeMessages, createWorkspaceWatcher, type WorkspaceWatcher } from "./workspace/watcher.js";
 
 /** Fixed default port. Kept in sync with the MCP endpoint registration. */
@@ -31,6 +34,17 @@ export function defaultWorkspaceDir(): string {
 export function resolveStaticDir(): string {
   const here = path.dirname(fileURLToPath(import.meta.url));
   return path.resolve(here, "../../web/dist");
+}
+
+/**
+ * This package's version, read from `package.json` at runtime (resolves from
+ * both `src/` and `dist/`) so the MCP `ping` answer never drifts from the
+ * published version.
+ */
+export function serverVersion(): string {
+  const require = createRequire(import.meta.url);
+  const pkg = require("../package.json") as { version: string };
+  return pkg.version;
 }
 
 interface CliOptions {
@@ -87,12 +101,27 @@ async function main(): Promise<void> {
   const getWelcome = (): ServerMessage[] =>
     watcher ? buildWelcomeMessages(options.workspace, watcher.getState()) : [WELCOME_WORKSPACE];
 
-  const server = createServer({ port: options.port, staticDir: resolveStaticDir(), getWelcome });
+  // Live facts for MCP tools — same mutable-watcher-ref pattern as
+  // `getWelcome`, so `ping` (and later T19/T20 tools) always answer from the
+  // watcher's current state.
+  const getMcpInfo = (): McpInfo => ({
+    version: serverVersion(),
+    workspaceDir: options.workspace,
+    active: watcher?.getState().active ?? null,
+  });
+
+  const server = createServer({
+    port: options.port,
+    staticDir: resolveStaticDir(),
+    getWelcome,
+    mcpHandler: createMcpHandler({ getInfo: getMcpInfo }),
+  });
 
   try {
     const { url } = await server.start();
     console.log(`[server] listening on ${url}`);
     console.log(`[server] websocket endpoint ${url.replace(/^http/, "ws")}${WS_PATH}`);
+    console.log(`[server] mcp endpoint ${url}${MCP_PATH} (streamable http, stateless)`);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "EADDRINUSE") {
       reportPortInUse(options.port);
