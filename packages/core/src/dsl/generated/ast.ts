@@ -10,6 +10,7 @@ export const ArchDslTerminals = {
     NL: /\r?\n/,
     EDGE_LABEL: /:[^\n\r]*/,
     ATTRS: /\[[^\]\r\n]*\]/,
+    SL_COMMENT: /\/\/[^\n\r]*/,
     WORD: /[^\s>:{}\[\],]+/,
     WS: /[ \t]+/,
 };
@@ -17,6 +18,7 @@ export const ArchDslTerminals = {
 export type ArchDslTerminalNames = keyof typeof ArchDslTerminals;
 
 export type ArchDslKeywordNames =
+    | ","
     | ">"
     | "direction"
     | "{"
@@ -75,7 +77,7 @@ export interface Statement extends langium.AstNode {
     isGroup: boolean;
     label?: string;
     source: Name;
-    target?: Name;
+    targets: Array<Name>;
 }
 
 export const Statement = 'Statement';
@@ -154,7 +156,7 @@ export class ArchDslAstReflection extends langium.AbstractAstReflection {
                         { name: 'isGroup', defaultValue: false },
                         { name: 'label' },
                         { name: 'source' },
-                        { name: 'target' }
+                        { name: 'targets', defaultValue: [] }
                     ]
                 };
             }
