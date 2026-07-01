@@ -7,12 +7,15 @@
   "types": "./src/index.ts",
   "scripts": {
     "test": "vitest run",
-    "build": "tsc -p tsconfig.json"
+    "generate": "langium generate",
+    "build": "pnpm run generate && tsc -p tsconfig.json"
   },
   "dependencies": {
+    "langium": "^3.5.0",
     "zod": "^3.24.0"
   },
   "devDependencies": {
+    "langium-cli": "^3.5.2",
     "typescript": "~5.6",
     "vitest": "^2"
   }

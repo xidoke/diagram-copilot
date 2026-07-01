@@ -26,6 +26,9 @@ export {
   type ValidateDocResult,
 } from "./model/index.js";
 
+// DSL parser (DGC-26) — eraser-style DSL → DiagramDoc
+export { parseDsl, type ParseDslResult } from "./dsl/index.js";
+
 // Shared error shapes
 export {
   ModelErrorSchema,
