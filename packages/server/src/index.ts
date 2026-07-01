@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 import type { ServerMessage } from "@diagram-copilot/core";
 import { createServer, WELCOME_WORKSPACE, WS_PATH } from "./server.js";
 import { createClientUpdateHandler } from "./client-updates.js";
-import { MCP_PATH } from "./http.js";
+import { MCP_PATH, createOpenHandler } from "./http.js";
 import { createMcpHandler, type McpInfo } from "./mcp/handler.js";
 import { buildWelcomeMessages, createWorkspaceWatcher, type WorkspaceWatcher } from "./workspace/watcher.js";
 
@@ -130,6 +130,8 @@ async function main(): Promise<void> {
     // watcher is created after the port is secured, so tools read `null` until
     // then and the live `WorkspaceOps` (list/open) afterwards.
     mcpHandler: createMcpHandler({ getInfo: getMcpInfo, getWorkspace: () => watcher ?? null }),
+    // `POST /api/open` (T36 / DGC-57) — diagram picker's open/create action.
+    openHandler: createOpenHandler(() => watcher ?? null),
     // Client (drawer/canvas) update frames → workspace writes with origin
     // routing + echo exclusion + baseVersion conflict handling (T21). Same
     // mutable-watcher-ref pattern: updates arriving before the watcher exists

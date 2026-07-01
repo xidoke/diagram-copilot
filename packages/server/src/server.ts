@@ -15,7 +15,7 @@ import {
   type UpdateMessage,
   type WorkspaceMessage,
 } from "@diagram-copilot/core";
-import { createRequestHandler } from "./http.js";
+import { createRequestHandler, type OpenRequestHandler } from "./http.js";
 import type { McpRequestHandler } from "./mcp/handler.js";
 
 /** WebSocket upgrade path. Everything else on the port is HTTP. */
@@ -69,6 +69,12 @@ export interface CreateServerOptions {
    * `mcpHandler`/`onClientUpdate` for tests that don't need it.
    */
   exportDir?: string;
+  /**
+   * Handler for `POST /api/open` (T36 / DGC-57, the diagram picker) — built
+   * with `createOpenHandler` from `http.js`. Omitted → route inert, same
+   * opt-in pattern as `mcpHandler`.
+   */
+  openHandler?: OpenRequestHandler;
 }
 
 export interface BroadcastOptions {
@@ -106,7 +112,7 @@ export interface ServerHandle {
  */
 export function createServer(options: CreateServerOptions): ServerHandle {
   const httpServer = http.createServer(
-    createRequestHandler(options.staticDir, options.mcpHandler, options.exportDir),
+    createRequestHandler(options.staticDir, options.mcpHandler, options.exportDir, options.openHandler),
   );
   const clients = new Set<WebSocket>();
 

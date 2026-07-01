@@ -21,3 +21,6 @@ API Server > Postgres: query
 API Server > Queue
 Queue > Worker
 Worker > Postgres
+
+Monitor Service [icon: bell, color: green]
+API Server > Monitor Service

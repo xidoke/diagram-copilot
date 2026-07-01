@@ -10,12 +10,22 @@ import { createReadStream, statSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import { EXPORT_PATH, handleExportRequest } from "./export/save.js";
+import type { WorkspaceOps } from "./workspace/watcher.js";
 
 /**
  * Route for the MCP Streamable HTTP endpoint (Claude Code). Kept here so the
  * router owns its paths; the handler itself lives in `mcp/handler.ts`.
  */
 export const MCP_PATH = "/mcp";
+
+/**
+ * Route for the diagram picker's "open" action (DGC-57/T36): `POST { name }`
+ * activates `name` on the workspace watcher, creating it first if it doesn't
+ * exist yet (same behavior as the `open_diagram` MCP tool). Unlike `/mcp`,
+ * this is a small enough surface that its handler lives right here rather
+ * than in its own module — see {@link createOpenHandler}.
+ */
+export const API_OPEN_PATH = "/api/open";
 
 /** Shown when `packages/web/dist` is missing (web app not built yet). */
 export const FALLBACK_HTML = `<!doctype html>
@@ -86,6 +96,103 @@ function resolveWithin(staticDir: string, urlPath: string): string | null {
   return filePath;
 }
 
+/** A `node:http` request handler for the `/api/open` route. */
+export type OpenRequestHandler = (req: IncomingMessage, res: ServerResponse) => Promise<void>;
+
+/** Refuse bodies past this size before they're even parsed — a diagram name is a few bytes. */
+const MAX_OPEN_BODY_BYTES = 16 * 1024;
+
+/** JSON shape sent back by {@link createOpenHandler} — mirrors `WorkspaceOps.open`'s `OpenResult`. */
+interface OpenResponseBody {
+  ok: boolean;
+  created: boolean;
+  name: string;
+  version: number;
+  error?: string;
+}
+
+function sendJson(res: ServerResponse, status: number, body: OpenResponseBody): void {
+  const payload = JSON.stringify(body);
+  res.writeHead(status, {
+    "content-type": "application/json; charset=utf-8",
+    "content-length": Buffer.byteLength(payload),
+  });
+  res.end(payload);
+}
+
+/** Buffer and JSON-parse a request body, rejecting anything past {@link MAX_OPEN_BODY_BYTES}. */
+async function readJsonBody(req: IncomingMessage): Promise<unknown> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of req) {
+    const buf = chunk as Buffer;
+    size += buf.length;
+    if (size > MAX_OPEN_BODY_BYTES) {
+      throw new Error("Request body too large.");
+    }
+    chunks.push(buf);
+  }
+  const raw = Buffer.concat(chunks).toString("utf8").trim();
+  if (raw.length === 0) return {};
+  return JSON.parse(raw);
+}
+
+/**
+ * Build the `/api/open` route handler: reads `{ name: string }` from the POST
+ * body, activates it on the workspace watcher (creating it if new), and
+ * responds with the resulting `OpenResult` as JSON. `getWorkspace` follows
+ * the same mutable-watcher-ref pattern as `mcpHandler`/`getWelcome` in the
+ * CLI entry — it may return `null` before the watcher has started, in which
+ * case the request is refused with 503 rather than crashing.
+ */
+export function createOpenHandler(getWorkspace: () => WorkspaceOps | null): OpenRequestHandler {
+  return async (req, res) => {
+    if (req.method !== "POST") {
+      res.writeHead(405, { allow: "POST", "content-type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ ok: false, created: false, name: "", version: 0, error: "Method Not Allowed" }));
+      return;
+    }
+
+    let body: unknown;
+    try {
+      body = await readJsonBody(req);
+    } catch {
+      sendJson(res, 400, { ok: false, created: false, name: "", version: 0, error: "Invalid JSON body." });
+      return;
+    }
+
+    const rawName =
+      body !== null && typeof body === "object" && "name" in body
+        ? (body as { name: unknown }).name
+        : undefined;
+    if (typeof rawName !== "string") {
+      sendJson(res, 400, {
+        ok: false,
+        created: false,
+        name: "",
+        version: 0,
+        error: '"name" must be a string.',
+      });
+      return;
+    }
+
+    const workspace = getWorkspace();
+    if (!workspace) {
+      sendJson(res, 503, {
+        ok: false,
+        created: false,
+        name: rawName,
+        version: 0,
+        error: "Workspace is not ready yet — try again in a moment.",
+      });
+      return;
+    }
+
+    const result = workspace.open(rawName);
+    sendJson(res, result.ok ? 200 : 400, result);
+  };
+}
+
 function sendFallback(res: ServerResponse, method: string): void {
   res.writeHead(200, {
     "content-type": "text/html; charset=utf-8",
@@ -123,12 +230,14 @@ function sendFile(res: ServerResponse, method: string, filePath: string, size: n
  *
  * When `exportDir` is provided, `POST` {@link EXPORT_PATH} is forwarded to
  * `handleExportRequest` (see `export/save.ts`), which owns body reading,
- * validation, and the filesystem write.
+ * validation, and the filesystem write. Same deal for `openHandler` at
+ * {@link API_OPEN_PATH} (the diagram picker's "open" action, DGC-57/T36).
  */
 export function createRequestHandler(
   staticDir?: string,
   mcpHandler?: (req: IncomingMessage, res: ServerResponse) => Promise<void>,
   exportDir?: string,
+  openHandler?: OpenRequestHandler,
 ): (req: IncomingMessage, res: ServerResponse) => void {
   return (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
@@ -140,6 +249,11 @@ export function createRequestHandler(
 
     if (exportDir && req.method === "POST" && url.pathname === EXPORT_PATH) {
       void handleExportRequest(req, res, exportDir);
+      return;
+    }
+
+    if (openHandler && url.pathname === API_OPEN_PATH) {
+      void openHandler(req, res);
       return;
     }
 
