@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { DiagramDoc } from "@diagram-copilot/core";
 import type { PositionedGraph } from "@diagram-copilot/layout";
+import { ELK_EDGE_TYPE } from "../../src/render/ElkEdge.js";
 import { ARCH_GROUP_TYPE, ARCH_NODE_TYPE, toFlow } from "../../src/render/toFlow.js";
 
 const doc: DiagramDoc = {
@@ -149,5 +150,147 @@ describe("toFlow — edge targeting a group", () => {
     const { edges } = toFlow(groupEdgeDoc, groupEdgeGraph);
     expect(edges).toHaveLength(1);
     expect(edges[0]).toMatchObject({ id: "e1", source: "API", target: "VPC" });
+  });
+});
+
+describe("toFlow — ELK bend-point edges (T15)", () => {
+  it("emits the elk edge type with the routed sections in data", () => {
+    const { edges } = toFlow(doc, graph);
+    expect(edges[0].type).toBe(ELK_EDGE_TYPE);
+    expect(edges[0].data?.sections).toEqual(graph.edges[0].sections);
+  });
+
+  it("passes root-container sections through untouched even when the target node is parent-relative", () => {
+    // Client (root) → API (inside VPC): the ELK container is the root (LCA of
+    // the endpoints), so the sections are already absolute (end 218 = 200 +
+    // 18) and must NOT be re-offset — React Flow draws custom edge paths in
+    // the root flow coordinate space, while the node keeps its parent-
+    // relative position.
+    const { nodes, edges } = toFlow(doc, graph);
+    const api = nodes.find((n) => n.id === "API");
+    expect(api?.position).toEqual({ x: 18, y: 34 }); // relative to VPC at (200, 0)
+    expect(edges[0].data?.sections).toEqual([
+      { startPoint: { x: 130, y: 44 }, endPoint: { x: 218, y: 58 } },
+    ]);
+  });
+
+  it("keeps bendPoints intact on the edge data", () => {
+    const bentGraph: PositionedGraph = {
+      ...graph,
+      edges: [
+        {
+          id: "e1",
+          from: "Client",
+          to: "API",
+          sections: [
+            {
+              startPoint: { x: 130, y: 44 },
+              endPoint: { x: 218, y: 58 },
+              bendPoints: [
+                { x: 170, y: 44 },
+                { x: 170, y: 58 },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const { edges } = toFlow(doc, bentGraph);
+    expect((edges[0].data?.sections as any)[0].bendPoints).toEqual([
+      { x: 170, y: 44 },
+      { x: 170, y: 58 },
+    ]);
+  });
+});
+
+describe("toFlow — lifting ELK container-relative sections to absolute", () => {
+  // ELK emits edge sections relative to the endpoints' lowest common
+  // ancestor (a group endpoint counting as its own ancestor); layout passes
+  // them through un-normalized, so toFlow must lift them by the container's
+  // absolute origin. Fixture: VPC at (100, 50) containing "Data tier" at
+  // (30, 40), i.e. Data tier's absolute origin is (130, 90).
+  const liftDoc: DiagramDoc = {
+    type: "architecture",
+    direction: "right",
+    nodes: [
+      { id: "Client", label: "Client" },
+      { id: "API", label: "API", groupId: "VPC" },
+      { id: "DB", label: "DB", groupId: "Data" },
+      { id: "Cache", label: "Cache", groupId: "Data" },
+    ],
+    groups: [
+      { id: "VPC", label: "VPC" },
+      { id: "Data", label: "Data tier", parentId: "VPC" },
+    ],
+    edges: [
+      { id: "inVpc", from: "API", to: "DB" },
+      { id: "inData", from: "DB", to: "Cache" },
+      { id: "toGroup", from: "API", to: "VPC" },
+    ],
+  };
+
+  const liftGraph: PositionedGraph = {
+    nodes: [
+      { id: "Client", x: 0, y: 60, width: 120, height: 48 },
+      { id: "API", x: 10, y: 10, width: 120, height: 48, parentId: "VPC" },
+      { id: "DB", x: 8, y: 8, width: 100, height: 48, parentId: "Data" },
+      { id: "Cache", x: 8, y: 70, width: 100, height: 48, parentId: "Data" },
+    ],
+    groups: [
+      { id: "VPC", x: 100, y: 50, width: 300, height: 200 },
+      { id: "Data", x: 30, y: 40, width: 160, height: 140, parentId: "VPC" },
+    ],
+    edges: [
+      {
+        id: "inVpc",
+        from: "API",
+        to: "DB",
+        // VPC-relative (ELK container = VPC, the endpoints' LCA).
+        sections: [
+          { startPoint: { x: 130, y: 34 }, endPoint: { x: 38, y: 48 }, bendPoints: [{ x: 135, y: 34 }] },
+        ],
+      },
+      {
+        id: "inData",
+        from: "DB",
+        to: "Cache",
+        // Data-tier-relative (both endpoints inside the nested group).
+        sections: [{ startPoint: { x: 58, y: 56 }, endPoint: { x: 58, y: 70 } }],
+      },
+      {
+        id: "toGroup",
+        from: "API",
+        to: "VPC",
+        // A group↔descendant edge is contained in the group itself → VPC-relative.
+        sections: [{ startPoint: { x: 130, y: 34 }, endPoint: { x: 300, y: 100 } }],
+      },
+    ],
+    width: 500,
+    height: 300,
+  };
+
+  const sectionsOf = (id: string) =>
+    toFlow(liftDoc, liftGraph).edges.find((e) => e.id === id)?.data?.sections as any;
+
+  it("lifts an intra-group edge by the group's absolute origin (incl. bendPoints)", () => {
+    expect(sectionsOf("inVpc")).toEqual([
+      {
+        startPoint: { x: 230, y: 84 }, // +(100, 50)
+        endPoint: { x: 138, y: 98 },
+        bendPoints: [{ x: 235, y: 84 }],
+      },
+    ]);
+  });
+
+  it("lifts a nested-group edge by the accumulated ancestor origin", () => {
+    expect(sectionsOf("inData")).toEqual([
+      { startPoint: { x: 188, y: 146 }, endPoint: { x: 188, y: 160 } }, // +(130, 90)
+    ]);
+  });
+
+  it("treats a group endpoint as its own container (group↔descendant edge)", () => {
+    expect(sectionsOf("toGroup")).toEqual([
+      { startPoint: { x: 230, y: 84 }, endPoint: { x: 400, y: 150 } }, // +(100, 50)
+    ]);
   });
 });
