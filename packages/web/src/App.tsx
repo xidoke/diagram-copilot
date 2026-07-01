@@ -15,6 +15,7 @@ import "./App.css";
 import { layoutDiagram } from "@diagram-copilot/layout";
 import { EmptyState, shouldShowEmptyState } from "./components/EmptyState.js";
 import { ExportMenu } from "./components/ExportMenu.js";
+import { Picker } from "./components/Picker.js";
 import { StatusPill } from "./components/StatusPill.js";
 import { Toolbar } from "./components/Toolbar.js";
 import { Drawer } from "./components/Drawer.js";
@@ -122,11 +123,7 @@ function DiagramCanvas() {
 
   return (
     <div className="app-shell">
-      {lastDiagram && (
-        <div className="diagram-info">
-          <b>{lastDiagram.name}</b> · v{lastDiagram.version}
-        </div>
-      )}
+      {lastDiagram && <Picker workspace={workspace} name={lastDiagram.name} version={lastDiagram.version} />}
       <Toolbar prefs={prefs} onChange={setPrefs} />
       <ExportMenu name={lastDiagram?.name ?? "diagram"} version={lastDiagram?.version ?? 0} />
       {showError && lastError && (
