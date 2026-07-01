@@ -16,9 +16,10 @@
  * inline here, while each other tool lives in its own module and is wired in
  * with one `register*Tools(server)` call — `get_dsl_guide` (`./tools/guide.ts`)
  * and `list_icons` (`./tools/icons.ts`, T19); `list_diagrams`/`open_diagram`
- * (`./tools/workspace.ts`, T22) and `get_diagram`/`set_diagram`
- * (`./tools/diagram.ts`, T20), which additionally read/act on live workspace
- * state via {@link McpHandlerOptions.getWorkspace}.
+ * (`./tools/workspace.ts`, T22), `get_diagram`/`set_diagram`
+ * (`./tools/diagram.ts`, T20) and `snapshot_diagram`
+ * (`./tools/snapshot-steps.ts`, T37), which additionally read/act on live
+ * workspace state via {@link McpHandlerOptions.getWorkspace}.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -28,6 +29,7 @@ import { registerListIconsTool } from "./tools/icons.js";
 import type { WorkspaceOps } from "../workspace/watcher.js";
 import { registerWorkspaceTools } from "./tools/workspace.js";
 import { registerDiagramTools } from "./tools/diagram.js";
+import { registerSnapshotDiagramTool } from "./tools/snapshot-steps.js";
 
 /** MCP server identity advertised in the `initialize` result. */
 export const MCP_SERVER_NAME = "diagram-copilot";
@@ -93,6 +95,7 @@ function registerTools(server: McpServer, options: McpHandlerOptions): void {
   if (options.getWorkspace !== undefined) {
     registerWorkspaceTools(server, options.getWorkspace);
     registerDiagramTools(server, options.getWorkspace);
+    registerSnapshotDiagramTool(server, options.getWorkspace);
   }
 }
 

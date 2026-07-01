@@ -153,6 +153,16 @@ export interface WorkspaceOps {
    * diagram with {@link open} first.
    */
   update(name: string, dsl: string, opts?: UpdateOptions): UpdateResult;
+  /**
+   * Create a new diagram file (validated name, `.arch` appended) seeded with
+   * `dsl` (or a template when omitted), then make it active. Refuses to
+   * overwrite an existing file. Added narrowly for `snapshot_diagram` (T37),
+   * which pairs it with {@link setActive} to restore the prior active
+   * diagram after the snapshot file is written.
+   */
+  createDiagram(name: string, dsl?: string): CreateDiagramResult;
+  /** Explicitly make `name` the active diagram (see {@link WorkspaceWatcher.setActive}). */
+  setActive(name: string): void;
 }
 
 export interface WorkspaceWatcher extends WorkspaceOps {
