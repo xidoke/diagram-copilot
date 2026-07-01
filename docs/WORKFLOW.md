@@ -43,14 +43,27 @@
 5. Đủ deps cho `[integration]` → Master chạy checkpoint, **demo nhìn thấy được**.
 6. **Đóng buổi:** commit + tick ROADMAP + 3 dòng log vào vault `Research/diagram-copilot/output/log.md`.
 
-## 6. Định dạng task trên Plane (bắt buộc trong mô tả)
+## 6. Model tiering (tiết kiệm chi phí, không tiếc với task khó)
+
+Master chọn model cho worker khi dispatch (tham số `model` của Agent). Nguyên tắc: **mechanical → Sonnet 5 · vừa → Opus 4.8 · khó/kiến trúc/tích hợp → Fable 5**. Đừng hạ tier cho task khó để tiết kiệm — sửa sai đắt hơn chạy đúng một lần.
+
+| Tier | Task | Vì sao |
+|---|---|---|
+| **Fable 5** | T2 contracts · T6 Langium grammar · T15 ELK bend-points · T18 MCP skeleton · T21 state/echo · T24 get_snapshot · T8/T17/T25 integration (Master) | Quyết định kiến trúc, công nghệ mới dễ kẹt (Langium/MCP), hình học routing, chống echo-loop — sai ở đây lan xuống mọi thứ |
+| **Opus 4.8** | T3 server WS · T7 ELK adapter (port spike) · T9/T10 grammar mở rộng · T13 group render · T20 get/set tools · T23 restart-safety | Logic thật nhưng có mẫu/spike/spec rõ để bám |
+| **Sonnet 5** | T1 scaffold · T4 file watch · T5 web shell · T11 golden tests · T12 node styling (từ spike) · T14 icons · T16 spacing · T19 guide/icons tools · T22 workspace tools | Mechanical, đường mòn quen, DoD đo được rõ |
+
+- Worker kẹt/lệch hướng ở tier thấp → Master **thăng tier ngay** (dispatch lại bằng Fable), không cố nhồi.
+- Master (điều phối, review diff, merge, integration) chạy model của phiên chính.
+
+## 7. Định dạng task trên Plane (bắt buộc trong mô tả)
 - `Lane:` [core|layout|server|mcp|web|assets|integration]
 - `Files:` phạm vi file được sửa
 - `Deps:` các T# phải Done trước
 - `Branch:` task/DGC-<seq>-<slug>
 - `DoD:` điều kiện nghiệm thu đo được (test/hành vi nhìn thấy)
 
-## 7. Bản đồ task hiện tại (v0.1 → v0.3, chi tiết trong Plane)
+## 8. Bản đồ task hiện tại (v0.1 → v0.3, chi tiết trong Plane)
 
 ```
 T1 scaffold ──► T2 contracts ──┬─► T3 server WS ──► T4 workspace watch ──┐
