@@ -1,0 +1,25 @@
+{
+  "name": "@diagram-copilot/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 4700 --strictPort",
+    "build": "tsc && vite build",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@diagram-copilot/core": "workspace:*",
+    "@xyflow/react": "^12",
+    "react": "^18",
+    "react-dom": "^18"
+  },
+  "devDependencies": {
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "@vitejs/plugin-react": "^4",
+    "typescript": "~5.6",
+    "vite": "^5",
+    "vitest": "^2"
+  }
+}
