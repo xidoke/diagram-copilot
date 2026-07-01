@@ -99,6 +99,9 @@ importers:
       '@diagram-copilot/core':
         specifier: workspace:*
         version: link:../core
+      '@diagram-copilot/icons':
+        specifier: workspace:*
+        version: link:../icons
       '@diagram-copilot/layout':
         specifier: workspace:*
         version: link:../layout

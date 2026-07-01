@@ -9,26 +9,42 @@ export const ARCH_GROUP_TYPE = "archGroup";
 export interface ArchNodeData extends Record<string, unknown> {
   label: string;
   direction: Direction;
+  /** Icon registry id (see `@diagram-copilot/icons`). Absent → no icon chip. */
+  icon?: string;
+  /** Color token name (e.g. `"orange"`), resolved by `resolveColor`. */
+  color?: string;
+}
+
+interface NodeMeta {
+  label: string;
+  icon?: string;
+  color?: string;
 }
 
 /**
- * Pure mapping: positioned graph (+ labels from the doc) → React Flow arrays.
- * Groups come first (already parent-before-child from layout), then leaves —
- * React Flow requires parents to precede children.
+ * Pure mapping: positioned graph (+ labels/icon/color from the doc) → React
+ * Flow arrays. Groups come first (already parent-before-child from
+ * layout), then leaves — React Flow requires parents to precede children.
  */
 export function toFlow(doc: DiagramDoc, graph: PositionedGraph): { nodes: Node[]; edges: Edge[] } {
-  const labels = new Map<string, string>();
-  for (const n of doc.nodes) labels.set(n.id, n.label);
-  for (const g of doc.groups) labels.set(g.id, g.label);
+  const meta = new Map<string, NodeMeta>();
+  for (const n of doc.nodes) meta.set(n.id, { label: n.label, icon: n.icon, color: n.color });
+  for (const g of doc.groups) meta.set(g.id, { label: g.label, icon: g.icon, color: g.color });
 
   const nodes: Node[] = [];
 
   for (const g of graph.groups) {
+    const m = meta.get(g.id);
     nodes.push({
       id: g.id,
       type: ARCH_GROUP_TYPE,
       position: { x: g.x, y: g.y },
-      data: { label: labels.get(g.id) ?? g.id, direction: doc.direction } satisfies ArchNodeData,
+      data: {
+        label: m?.label ?? g.id,
+        direction: doc.direction,
+        ...(m?.icon !== undefined ? { icon: m.icon } : {}),
+        ...(m?.color !== undefined ? { color: m.color } : {}),
+      } satisfies ArchNodeData,
       style: { width: g.width, height: g.height },
       ...(g.parentId ? { parentId: g.parentId, extent: "parent" as const } : {}),
       selectable: false,
@@ -37,11 +53,17 @@ export function toFlow(doc: DiagramDoc, graph: PositionedGraph): { nodes: Node[]
   }
 
   for (const n of graph.nodes) {
+    const m = meta.get(n.id);
     nodes.push({
       id: n.id,
       type: ARCH_NODE_TYPE,
       position: { x: n.x, y: n.y },
-      data: { label: labels.get(n.id) ?? n.id, direction: doc.direction } satisfies ArchNodeData,
+      data: {
+        label: m?.label ?? n.id,
+        direction: doc.direction,
+        ...(m?.icon !== undefined ? { icon: m.icon } : {}),
+        ...(m?.color !== undefined ? { color: m.color } : {}),
+      } satisfies ArchNodeData,
       style: { width: n.width, height: n.height },
       ...(n.parentId ? { parentId: n.parentId, extent: "parent" as const } : {}),
       draggable: false,

@@ -107,20 +107,41 @@ body {
   font-weight: 600;
 }
 
-/* ── Architecture renderer (v0.1 minimal; full theme lands with T12/T13) ── */
+/* ── Architecture renderer — theme B "dark blueprint" (T12) ── */
 .arch-node {
   width: 100%;
   height: 100%;
   display: flex;
   align-items: center;
-  padding: 0 14px;
+  gap: var(--node-gap);
+  padding: 0 var(--node-padding-x);
   background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: 0 0 14px rgba(60, 120, 255, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  border: var(--node-border-width) solid var(--border);
+  border-radius: var(--node-radius);
+  box-shadow: var(--node-glow), var(--node-shadow);
   color: var(--text-strong);
   font-size: 13px;
   font-weight: 600;
+}
+/* Only applied when the node carries an explicit `color` — plain nodes
+   keep a uniform border so the accent stays a deliberate signal. */
+.arch-node--accent {
+  border-left-width: var(--node-accent-border-width);
+  border-left-color: var(--node-accent, var(--accent));
+}
+.arch-node-chip {
+  width: var(--icon-chip-size);
+  height: var(--icon-chip-size);
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--icon-chip-radius);
+  filter: drop-shadow(var(--icon-chip-glow));
+}
+.arch-node-chip svg {
+  width: 100%;
+  height: 100%;
 }
 .arch-node-label {
   white-space: nowrap;
@@ -134,9 +155,16 @@ body {
 .arch-group {
   width: 100%;
   height: 100%;
-  border: 1.5px dashed var(--border);
-  background: rgba(50, 110, 220, 0.05);
-  border-radius: 12px;
+  border: var(--group-border-width) dashed var(--border);
+  background: var(--group-bg);
+  border-radius: var(--group-radius);
+}
+/* Subtle emphasis when the group carries an explicit `color`: tint the
+   dashed outline and background instead of a heavier treatment, so nested
+   groups stay readable. */
+.arch-group--accent {
+  border-color: var(--node-accent, var(--accent));
+  background: var(--group-accent-bg);
 }
 .arch-group-label {
   position: absolute;
@@ -147,6 +175,9 @@ body {
   text-transform: uppercase;
   color: var(--text-dim);
   font-weight: 700;
+}
+.arch-group--accent > .arch-group-label {
+  color: var(--node-accent, var(--text-dim));
 }
 
 .react-flow__edge-path {

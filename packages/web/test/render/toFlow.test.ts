@@ -8,9 +8,9 @@ const doc: DiagramDoc = {
   direction: "right",
   nodes: [
     { id: "Client", label: "Client" },
-    { id: "API", label: "API", groupId: "VPC" },
+    { id: "API", label: "API", groupId: "VPC", icon: "server", color: "orange" },
   ],
-  groups: [{ id: "VPC", label: "VPC" }],
+  groups: [{ id: "VPC", label: "VPC", color: "blue" }],
   edges: [{ id: "e1", from: "Client", to: "API", label: "https" }],
 };
 
@@ -55,5 +55,27 @@ describe("toFlow", () => {
     const { edges } = toFlow(doc, graph);
     expect(edges).toHaveLength(1);
     expect(edges[0]).toMatchObject({ source: "Client", target: "API", label: "https" });
+  });
+
+  it("carries icon and color from a node onto its ArchNodeData", () => {
+    const { nodes } = toFlow(doc, graph);
+    const api = nodes.find((n) => n.id === "API");
+    expect(api?.data).toMatchObject({ icon: "server", color: "orange" });
+  });
+
+  it("carries color from a group onto its ArchNodeData, without an icon key when unset", () => {
+    const { nodes } = toFlow(doc, graph);
+    const vpc = nodes.find((n) => n.id === "VPC");
+    expect(vpc?.data).toMatchObject({ color: "blue" });
+    expect(vpc?.data.icon).toBeUndefined();
+  });
+
+  it("omits icon/color entirely for nodes that don't set them", () => {
+    const { nodes } = toFlow(doc, graph);
+    const client = nodes.find((n) => n.id === "Client");
+    expect(client?.data.icon).toBeUndefined();
+    expect(client?.data.color).toBeUndefined();
+    expect("icon" in (client?.data ?? {})).toBe(false);
+    expect("color" in (client?.data ?? {})).toBe(false);
   });
 });
