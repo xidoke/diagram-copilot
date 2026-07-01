@@ -1,0 +1,11 @@
+{
+  "projectName": "ArchDsl",
+  "languages": [
+    {
+      "id": "arch-dsl",
+      "grammar": "src/dsl/arch-dsl.langium",
+      "fileExtensions": [".arch"]
+    }
+  ],
+  "out": "src/dsl/generated"
+}
