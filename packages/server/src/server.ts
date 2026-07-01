@@ -20,10 +20,10 @@ import { createRequestHandler } from "./http.js";
 export const WS_PATH = "/ws";
 
 /**
- * Greeting frame sent to every client on connect. v0.1 has no workspace
- * scanner yet (that arrives with the file watcher), so we announce an empty
- * workspace. `active` must be non-empty per the frozen protocol schema, so
- * we use the `"untitled"` placeholder until the watcher supplies real names.
+ * Greeting frame sent to every client on connect when no {@link
+ * CreateServerOptions.getWelcome} is supplied. `active` must be non-empty
+ * per the frozen protocol schema, so we use the `"untitled"` placeholder —
+ * the same convention the workspace watcher (T4) uses for an empty workspace.
  */
 export const WELCOME_WORKSPACE: WorkspaceMessage = {
   kind: "workspace",
@@ -36,6 +36,14 @@ export interface CreateServerOptions {
   port: number;
   /** Absolute path to the built web bundle. Omitted/missing → fallback page. */
   staticDir?: string;
+  /**
+   * Produce the greeting frames sent to a newly connected client, in order
+   * (typically a `workspace` message followed by a `diagram`/`diagram-error`
+   * for the active diagram). Called fresh on every connection so it always
+   * reflects current state. Defaults to `[WELCOME_WORKSPACE]` — callers
+   * without a workspace watcher (e.g. most tests) keep the old behavior.
+   */
+  getWelcome?: () => ServerMessage[];
 }
 
 export interface BroadcastOptions {
@@ -97,11 +105,15 @@ export function createServer(options: CreateServerOptions): ServerHandle {
   wss.on("connection", (socket) => {
     clients.add(socket);
 
-    // Greet the newcomer with the current (empty, in v0.1) workspace.
-    try {
-      socket.send(serializeMessage(WELCOME_WORKSPACE));
-    } catch (error) {
-      console.error("[server] failed to send welcome frame:", error);
+    // Greet the newcomer with current state — the workspace listing and
+    // (if `getWelcome` is wired to a watcher) the active diagram.
+    const welcomeMessages = options.getWelcome ? options.getWelcome() : [WELCOME_WORKSPACE];
+    for (const message of welcomeMessages) {
+      try {
+        socket.send(serializeMessage(message));
+      } catch (error) {
+        console.error("[server] failed to send welcome frame:", error);
+      }
     }
 
     socket.on("message", (data) => {
