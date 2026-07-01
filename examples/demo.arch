@@ -1,18 +1,23 @@
 direction right
 
-Client
-CDN
-API Server
-Postgres
-Redis
+Client [icon: monitor]
+CDN [icon: cloud, color: purple]
+
+VPC {
+  API Server [icon: server, color: orange]
+  Queue [icon: list, color: pink]
+  Worker [icon: cpu, color: yellow]
+
+  Data tier {
+    Postgres [icon: postgresql, color: blue]
+    Redis [icon: redis, color: red]
+  }
+}
 
 Client > CDN
 CDN > API Server
 API Server > Redis: cache
 API Server > Postgres: query
-Worker
-Queue
-
 API Server > Queue
 Queue > Worker
 Worker > Postgres
