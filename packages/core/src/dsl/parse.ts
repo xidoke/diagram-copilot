@@ -37,9 +37,10 @@ type AttrKey = (typeof ATTR_KEYS)[number];
 type Attrs = Partial<Record<AttrKey, string>>;
 
 /**
- * Parse eraser-style architecture DSL into a {@link DiagramDoc} (v0.2 scope:
+ * Parse eraser-style architecture DSL into a {@link DiagramDoc} (v0.3 scope:
  * `direction`, node declarations, `[icon:… color:… label:…]` attributes,
- * nested `{ … }` group blocks, and `A > B` / `A > B: label` edges).
+ * nested `{ … }` group blocks, `A > B` / `A > B: label` edges, one-to-many
+ * `A > B, C, D` fan-out edges, and `//` line comments).
  *
  * Synchronous: uses Langium's `LangiumParser.parse()` directly — the grammar
  * has no cross-references, so no async document building/linking is needed.
@@ -47,8 +48,15 @@ type Attrs = Partial<Record<AttrKey, string>>;
  * Mapping semantics (eraser-like):
  * - A node/group id and default label are the name as written, with runs of
  *   whitespace inside the name collapsed to a single space and outer
- *   whitespace trimmed. A `label:` attribute overrides the display label but
- *   never the id.
+ *   whitespace trimmed (but no Unicode normalization — Vietnamese and other
+ *   non-ASCII names round-trip verbatim and compare by raw code units). A
+ *   `label:` attribute overrides the display label but never the id.
+ * - `A > B, C, D` is one-to-many: each comma-separated target yields its own
+ *   edge (`e1..eN` in source order); a trailing `: label` applies to all of
+ *   them, and every endpoint is auto-created on first appearance.
+ * - `//` starts a comment to end of line (hidden), so comments never shift a
+ *   later error's line/column; a `//` swallowed by a greedy edge label is
+ *   stripped here (comment wins over label content).
  * - A `{ … }` block declares a group; nodes/groups inside it get
  *   `groupId` / `parentId` set to the nearest enclosing group.
  * - Edges may reference nodes *or* groups; an endpoint that is a known group
@@ -86,7 +94,7 @@ export function parseDsl(dsl: string): ParseDslResult {
     parseErrors.push({
       line: positiveOr(error.token.startLine, fallback.line),
       column: positiveOr(error.token.startColumn, fallback.column),
-      message: error.message,
+      message: friendlyParserMessage(error),
     });
   }
 
@@ -157,19 +165,26 @@ export function parseDsl(dsl: string): ParseDslResult {
       }
 
       const from = joinName(line.source);
-      if (line.target === undefined) {
+      if (line.targets.length === 0) {
         declareNode(from, currentGroupId, parseAttrs(line, parseErrors));
       } else {
-        const to = joinName(line.target);
         ensureEndpoint(from);
-        ensureEndpoint(to);
-        const edge: DiagramEdge = { id: `e${edges.length + 1}`, from, to };
-        // EDGE_LABEL includes the leading ':'; strip it and trim.
-        const label = line.label?.slice(1).trim();
-        if (label !== undefined && label !== "") {
-          edge.label = label;
+        // EDGE_LABEL includes the leading ':' and, being greedy, may have
+        // swallowed a trailing `//…` comment (the `:` out-lexes SL_COMMENT).
+        // Strip the leading ':', drop any comment, and trim; the resulting
+        // label — when non-empty — is shared by every fan-out edge.
+        const label = line.label === undefined ? undefined : stripLineComment(line.label.slice(1)).trim();
+        // One-to-many: `A > B, C, D` yields one edge per target, numbered
+        // e1..eN in source order; implicit endpoints are auto-created once.
+        for (const targetName of line.targets) {
+          const to = joinName(targetName);
+          ensureEndpoint(to);
+          const edge: DiagramEdge = { id: `e${edges.length + 1}`, from, to };
+          if (label !== undefined && label !== "") {
+            edge.label = label;
+          }
+          edges.push(edge);
         }
-        edges.push(edge);
       }
     }
   };
@@ -256,6 +271,91 @@ function isAttrKey(key: string): key is AttrKey {
 /** Join a parsed multi-word name back into a single-space-separated string. */
 function joinName(name: Name): string {
   return name.parts.join(" ");
+}
+
+/**
+ * Drop an inline `//…` comment from an edge label.
+ *
+ * Comments are a hidden `SL_COMMENT` terminal everywhere *except* inside an
+ * `EDGE_LABEL`, whose greedy `:` swallows the rest of the line (including any
+ * trailing `//…`). Per the DSL's "comment wins" rule, we cut the label at the
+ * first `//`. A lone `/` is preserved (e.g. `read/write`), so only a double
+ * slash starts a comment.
+ */
+function stripLineComment(label: string): string {
+  const at = label.indexOf("//");
+  return at === -1 ? label : label.slice(0, at);
+}
+
+/**
+ * Minimal structural view of a Chevrotain `IRecognitionException`. Chevrotain
+ * is a transitive dependency (not directly importable under pnpm), so we type
+ * only the fields we read rather than importing the class.
+ */
+interface RecognitionErrorLike {
+  name: string;
+  message: string;
+  token: { image: string; tokenType?: { name?: string } };
+}
+
+/**
+ * Turn a verbose Chevrotain parser diagnostic into a short, actionable
+ * one-line message shared by Claude self-correction and Monaco markers.
+ *
+ * The raw messages are multi-line and cryptic (e.g. "expecting at least one
+ * iteration which starts with…"). We reduce them to `Unexpected <found>;
+ * expected <what>.` using the error kind and the offending token, and never
+ * emit a multi-line message. Line/column are handled by the caller and are
+ * unaffected.
+ */
+function friendlyParserMessage(error: RecognitionErrorLike): string {
+  const found = describeFoundToken(error.token);
+  const expected = describeExpected(error);
+  if (expected !== undefined) {
+    return `Unexpected ${found}; expected ${expected}.`;
+  }
+  return `Unexpected ${found}.`;
+}
+
+/** Human phrase for the token the parser actually saw. */
+function describeFoundToken(token: RecognitionErrorLike["token"]): string {
+  const name = token.tokenType?.name;
+  if (name === "EOF" || token.image === "") return "end of input";
+  if (name === "NL" || token.image === "\n" || token.image === "\r\n") return "end of line";
+  return `'${token.image}'`;
+}
+
+/**
+ * Human phrase for what the parser wanted, or `undefined` to omit the
+ * "expected …" clause. `EarlyExitException` only fires in this grammar where a
+ * `Name` (`WORD+`) must begin — after `>`, after `,`, or at a statement start —
+ * so it always means "a name". Other kinds carry the expected token type inside
+ * the message (`type 'X'`), which we map to a friendly phrase; an expected
+ * `EOF` (stray leading token) reads better as a bare "Unexpected …".
+ */
+function describeExpected(error: RecognitionErrorLike): string | undefined {
+  if (error.name === "EarlyExitException") return "a name";
+  const match = /type '([^']+)'|<\[(\w+)\]>/.exec(error.message);
+  const expectedToken = match?.[1] ?? match?.[2];
+  return expectedToken === undefined ? undefined : friendlyExpectedToken(expectedToken);
+}
+
+/** Friendly phrase for an expected token type; `undefined` drops the clause. */
+function friendlyExpectedToken(name: string): string | undefined {
+  switch (name) {
+    case "WORD":
+      return "a name";
+    case "EDGE_LABEL":
+      return "a label";
+    case "ATTRS":
+      return "attributes";
+    case "NL":
+      return "a new line";
+    case "EOF":
+      return undefined; // stray token: "Unexpected 'X'." reads cleaner
+    default:
+      return `'${name}'`; // structural keyword, e.g. }
+  }
 }
 
 /** Chevrotain positions can be NaN/undefined (e.g. at EOF); guard them. */

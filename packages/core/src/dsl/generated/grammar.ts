@@ -94,7 +94,7 @@ export const ArchDslGrammar = (): Grammar => loadedArchDslGrammar ?? (loadedArch
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@9"
+                "$ref": "#/rules@10"
               },
               "arguments": []
             }
@@ -138,8 +138,8 @@ export const ArchDslGrammar = (): Grammar => loadedArchDslGrammar ?? (loadedArch
                   },
                   {
                     "$type": "Assignment",
-                    "feature": "target",
-                    "operator": "=",
+                    "feature": "targets",
+                    "operator": "+=",
                     "terminal": {
                       "$type": "RuleCall",
                       "rule": {
@@ -147,6 +147,28 @@ export const ArchDslGrammar = (): Grammar => loadedArchDslGrammar ?? (loadedArch
                       },
                       "arguments": []
                     }
+                  },
+                  {
+                    "$type": "Group",
+                    "elements": [
+                      {
+                        "$type": "Keyword",
+                        "value": ","
+                      },
+                      {
+                        "$type": "Assignment",
+                        "feature": "targets",
+                        "operator": "+=",
+                        "terminal": {
+                          "$type": "RuleCall",
+                          "rule": {
+                            "$ref": "#/rules@5"
+                          },
+                          "arguments": []
+                        }
+                      }
+                    ],
+                    "cardinality": "*"
                   },
                   {
                     "$type": "Assignment",
@@ -278,7 +300,7 @@ export const ArchDslGrammar = (): Grammar => loadedArchDslGrammar ?? (loadedArch
         "terminal": {
           "$type": "RuleCall",
           "rule": {
-            "$ref": "#/rules@9"
+            "$ref": "#/rules@10"
           },
           "arguments": []
         },
@@ -323,6 +345,16 @@ export const ArchDslGrammar = (): Grammar => loadedArchDslGrammar ?? (loadedArch
     },
     {
       "$type": "TerminalRule",
+      "hidden": true,
+      "name": "SL_COMMENT",
+      "definition": {
+        "$type": "RegexToken",
+        "regex": "/\\\\/\\\\/[^\\\\n\\\\r]*/"
+      },
+      "fragment": false
+    },
+    {
+      "$type": "TerminalRule",
       "name": "WORD",
       "definition": {
         "$type": "RegexToken",
@@ -348,5 +380,5 @@ export const ArchDslGrammar = (): Grammar => loadedArchDslGrammar ?? (loadedArch
   "interfaces": [],
   "types": [],
   "usedGrammars": [],
-  "$comment": "/**\\n * arch-dsl — minimal eraser-style architecture DSL (DGC-26 v0.1, DGC-29 v0.2).\\n *\\n * Supported statements (one per line, newline-significant):\\n *   direction right|left|up|down\\n *   Node Name With Spaces\\n *   Node Name [icon: server, color: orange]\\n *   Some Node > Other Node\\n *   Some Node > Other Node: edge label to end of line\\n *   Group Name [icon: …, color: …] {\\n *     Nested Node\\n *     Nested Group { … }\\n *   }\\n *\\n * Design notes:\\n * - Newlines are significant (statement separators), so NL is a real\\n *   terminal and only spaces/tabs are hidden.\\n * - Multi-word names are parsed as \`WORD+\` and re-joined with single\\n *   spaces during AST→doc mapping (whitespace inside names is\\n *   normalized). WORD is a negated class, so basic Unicode names\\n *   (e.g. Vietnamese) work for free.\\n * - After a name, one token of lookahead disambiguates the three\\n *   suffixes (all first-sets disjoint, LL(1)):\\n *     \`>\`      → edge\\n *     \`[\`      → attributes (then an optional \`{ … }\` group block)\\n *     \`{\`      → group block (no attributes)\\n *   No suffix at all → a plain node declaration.\\n * - The direction value is a plain WORD (validated in TypeScript), so\\n *   \`right\`/\`left\`/\`up\`/\`down\` are NOT reserved words and stay usable\\n *   in node names. Only \`direction\` itself is a keyword.\\n * - EDGE_LABEL eats \`:\` plus the rest of the line, so labels may\\n *   contain further colons (e.g. \\"ratio 2:1\\"). Because a bare \`:\`\\n *   always lexes as EDGE_LABEL, attributes cannot use \`:\` as a\\n *   structural token — instead the whole \`[ … ]\` block is one opaque\\n *   ATTRS terminal, split into \`key: value\` pairs in TypeScript.\\n * - WORD excludes the structural characters \`{ } [ ] ,\` so that group\\n *   blocks and attribute lists tokenize; consequently those characters\\n *   can no longer appear inside a node/group name (v0.1 already\\n *   excluded whitespace, \`>\` and \`:\`).\\n *\\n * v0.2 excludes comments and one-to-many edges (later tasks).\\n */"
+  "$comment": "/**\\n * arch-dsl — minimal eraser-style architecture DSL\\n * (DGC-26 v0.1, DGC-29 v0.2, DGC-30 v0.3).\\n *\\n * Supported statements (one per line, newline-significant):\\n *   direction right|left|up|down\\n *   Node Name With Spaces\\n *   Node Name [icon: server, color: orange]\\n *   Some Node > Other Node\\n *   Some Node > Other Node: edge label to end of line\\n *   Some Node > A, B, C            // one-to-many fan-out (one edge per target)\\n *   Some Node > A, B: shared label // the label applies to every fan-out edge\\n *   // a full-line comment\\n *   Some Node // an end-of-line comment\\n *   Group Name [icon: …, color: …] {\\n *     Nested Node\\n *     Nested Group { … }\\n *   }\\n *\\n * Design notes:\\n * - Newlines are significant (statement separators), so NL is a real\\n *   terminal and only spaces/tabs are hidden.\\n * - Multi-word names are parsed as \`WORD+\` and re-joined with single\\n *   spaces during AST→doc mapping (whitespace inside names is\\n *   normalized). WORD is a negated class, so basic Unicode names\\n *   (e.g. Vietnamese) work for free; the mapper never applies Unicode\\n *   normalization, so ids compare by raw code units.\\n * - After a name, one token of lookahead disambiguates the three\\n *   suffixes (all first-sets disjoint, LL(1)):\\n *     \`>\`      → edge (then optional \`, target\` repeats and an optional label)\\n *     \`[\`      → attributes (then an optional \`{ … }\` group block)\\n *     \`{\`      → group block (no attributes)\\n *   No suffix at all → a plain node declaration.\\n * - \`A > B, C, D\` is one-to-many: each comma-separated target becomes its\\n *   own edge (\`e1..eN\` in source order). \`,\` is excluded from WORD, so it\\n *   is a clean separator; a trailing \`: label\` applies to every edge.\\n * - The direction value is a plain WORD (validated in TypeScript), so\\n *   \`right\`/\`left\`/\`up\`/\`down\` are NOT reserved words and stay usable\\n *   in node names. Only \`direction\` itself is a keyword.\\n * - EDGE_LABEL eats \`:\` plus the rest of the line, so labels may\\n *   contain further colons (e.g. \\"ratio 2:1\\"). Because a bare \`:\`\\n *   always lexes as EDGE_LABEL, attributes cannot use \`:\` as a\\n *   structural token — instead the whole \`[ … ]\` block is one opaque\\n *   ATTRS terminal, split into \`key: value\` pairs in TypeScript.\\n * - WORD excludes the structural characters \`{ } [ ] ,\` so that group\\n *   blocks and attribute lists tokenize; consequently those characters\\n *   can no longer appear inside a node/group name (v0.1 already\\n *   excluded whitespace, \`>\` and \`:\`).\\n * - Comments: \`//\` to end of line is a hidden SL_COMMENT terminal, so a\\n *   comment may appear on its own line or trail any statement, and — being\\n *   hidden — it never shifts the line/column of a later error. SL_COMMENT\\n *   is declared before WORD so a boundary \`//…\` (line start or after\\n *   whitespace/\`>\`) lexes as a comment rather than a word; \`/\` stays legal\\n *   inside a name (e.g. \`TCP/IP\`) because SL_COMMENT needs a double slash.\\n *   The one place a comment is NOT hidden is *inside* a greedy EDGE_LABEL\\n *   (the \`:\` grabs the rest of the line first); there \`//…\` is stripped\\n *   during AST→doc mapping — comment wins over label content. See parse.ts.\\n */"
 }`));
