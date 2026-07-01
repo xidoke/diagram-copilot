@@ -3,6 +3,7 @@
  * packages/components (e.g. T8's node rendering) should need.
  */
 export { useDiagramConnection, DEFAULT_WS_URL } from "./useDiagramConnection.js";
+export type { DiagramConnection } from "./useDiagramConnection.js";
 export type { ConnectionStatus, DiagramConnectionState } from "./types.js";
 
 // Lower-level building blocks — exported for tests and for advanced

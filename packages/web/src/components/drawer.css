@@ -1,0 +1,138 @@
+/*
+ * Slide-over DSL drawer (theme B: dark blueprint). Layout C — the drawer
+ * overlays the canvas from the left; the canvas never resizes. A vertical
+ * toggle tab rides the drawer's right edge so it's reachable whether the
+ * drawer is open or closed.
+ */
+
+.drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 20;
+  height: 100vh;
+  width: 440px;
+  /* Slid off-screen by default; the toggle tab (right: -32px) still pokes
+     out past the viewport's left edge so it stays clickable. */
+  transform: translateX(-100%);
+  transition: transform 200ms ease;
+  /* Let the toggle tab render outside the panel box. */
+  overflow: visible;
+  pointer-events: none;
+}
+.drawer--open {
+  transform: translateX(0);
+}
+
+/* The actual surface — a touch darker/denser than the canvas so it reads as a
+   distinct panel layered over the diagram. */
+.drawer-panel {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.45);
+  pointer-events: auto;
+}
+
+/* Vertical toggle tab, riding the panel's right edge (moves with the drawer). */
+.drawer-toggle {
+  position: absolute;
+  top: 50%;
+  right: -32px;
+  transform: translateY(-50%);
+  width: 32px;
+  min-height: 92px;
+  padding: 10px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-left: none;
+  border-radius: 0 10px 10px 0;
+  color: var(--text-dim);
+  cursor: pointer;
+  pointer-events: auto;
+}
+.drawer-toggle:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+.drawer-toggle__glyph {
+  font-size: 15px;
+  line-height: 1;
+  font-weight: 700;
+}
+.drawer-toggle__text {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  writing-mode: vertical-rl;
+}
+
+/* Header: diagram name · version, plus the optional "remote changed" badge. */
+.drawer-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.drawer-header__title {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.drawer-header__name {
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.drawer-header__name--empty {
+  color: var(--text-dim);
+  font-weight: 500;
+  font-style: italic;
+}
+.drawer-header__version {
+  flex: none;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* Small, unobtrusive badge shown when the server diverged mid-edit. */
+.drawer-badge {
+  flex: none;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  background: rgba(74, 163, 255, 0.14);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.drawer-badge:hover {
+  background: rgba(74, 163, 255, 0.24);
+}
+
+/* Editor fills the rest; Monaco needs a sized parent (height:100% inside). */
+.drawer-editor {
+  flex: 1;
+  min-height: 0;
+}
