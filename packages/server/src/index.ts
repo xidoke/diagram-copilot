@@ -51,6 +51,7 @@ export function serverVersion(): string {
 interface CliOptions {
   port: number;
   workspace: string;
+  exportDir: string;
 }
 
 /** Parse argv into validated CLI options, throwing a friendly error on bad input. */
@@ -60,6 +61,7 @@ export function parseCliArgs(argv: string[]): CliOptions {
     options: {
       port: { type: "string" },
       workspace: { type: "string" },
+      "export-dir": { type: "string" },
     },
   });
 
@@ -71,7 +73,12 @@ export function parseCliArgs(argv: string[]): CliOptions {
     }
   }
 
-  return { port, workspace: values.workspace ?? defaultWorkspaceDir() };
+  const workspace = values.workspace ?? defaultWorkspaceDir();
+  // Default lives under the resolved workspace (not the package default),
+  // so `--workspace foo` without `--export-dir` saves to `foo/exports`.
+  const exportDir = values["export-dir"] ?? path.join(workspace, "exports");
+
+  return { port, workspace, exportDir };
 }
 
 function reportPortInUse(port: number): void {
@@ -93,6 +100,7 @@ async function main(): Promise<void> {
   }
 
   console.log(`[server] workspace: ${options.workspace}`);
+  console.log(`[server] export dir: ${options.exportDir}`);
 
   // `getWelcome` is wired to the server at creation time, but the watcher it
   // reads from is only created after `start()` succeeds (no point scanning
@@ -114,6 +122,9 @@ async function main(): Promise<void> {
   const server = createServer({
     port: options.port,
     staticDir: resolveStaticDir(),
+    // `POST /export` (T29 / DGC-49) writes saved diagram images here; the
+    // dir itself is created lazily by `saveExport` on first use, not here.
+    exportDir: options.exportDir,
     getWelcome,
     // Same mutable-watcher-ref pattern as `getWelcome`/`getMcpInfo`: the
     // watcher is created after the port is secured, so tools read `null` until

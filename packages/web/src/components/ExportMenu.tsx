@@ -2,7 +2,8 @@
  * Floating export menu (DGC-48 / T28) — 📤 trigger button docked top-right,
  * 8px below the layout Toolbar (own floating chrome; Toolbar.tsx is owned by
  * another workstream and isn't touched here). Click opens a small menu:
- * PNG, PNG (transparent), SVG, Copy PNG.
+ * PNG, PNG (transparent), SVG, Copy PNG, Save to workspace exports (T29 /
+ * DGC-49 — the one action that round-trips to the server's `POST /export`).
  *
  * Pure presentational + the click wiring: the actual rasterization lives in
  * `render/export.ts`, this component just supplies the node bbox (via
@@ -11,7 +12,13 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { useReactFlow } from "@xyflow/react";
-import { buildExportFilename, copyPngToClipboard, exportPng, exportSvg } from "../render/export.js";
+import {
+  buildExportFilename,
+  copyPngToClipboard,
+  exportPng,
+  exportSvg,
+  saveToWorkspaceExports,
+} from "../render/export.js";
 
 export interface ExportMenuProps {
   /** Active diagram name — used to build the downloaded filename. */
@@ -89,6 +96,16 @@ export function ExportMenu({ name, version }: ExportMenuProps) {
     );
   };
 
+  const handleSaveToExports = async () => {
+    setOpen(false);
+    const result = await saveToWorkspaceExports(getNodesBounds(getNodes()), name, version);
+    setStatus(
+      result.ok
+        ? { tone: "success", message: `Saved to ${result.path}` }
+        : { tone: "error", message: result.error ?? "Save to workspace exports failed" },
+    );
+  };
+
   return (
     <div className="export-menu" ref={containerRef}>
       <button
@@ -114,6 +131,9 @@ export function ExportMenu({ name, version }: ExportMenuProps) {
           </button>
           <button type="button" role="menuitem" className="export-menu__item" onClick={handleCopy}>
             Copy PNG
+          </button>
+          <button type="button" role="menuitem" className="export-menu__item" onClick={handleSaveToExports}>
+            Save to workspace exports
           </button>
         </div>
       )}
