@@ -161,12 +161,72 @@ function downloadDataUrl(dataUrl: string, filename: string): void {
 }
 
 /**
+ * Work around two html-to-image × React Flow v12 quirks that silently drop
+ * every edge from the exported image (found by live-clone dissection, see
+ * DGC-48 follow-up):
+ *
+ * 1. React Flow v12 wraps each edge in its own `<svg>`, and html-to-image
+ *    deep-clones `<svg>` subtrees RAW — no computed-style inlining for their
+ *    descendants. The visible path's `stroke` comes from the
+ *    `.react-flow__edge-path` stylesheet rule, so the clone's path has no
+ *    stroke at all → invisible lines. Fix: temporarily inline the computed
+ *    stroke/stroke-width/fill onto every edge path before capture.
+ * 2. The `<marker>` arrowhead defs (ElkEdgeMarkerDefs) live in an svg OUTSIDE
+ *    `.react-flow__viewport`, so the captured clone can't resolve
+ *    `marker-end="url(#…)"` → no arrowheads. Fix: temporarily append a clone
+ *    of the defs svg inside the viewport.
+ *
+ * Returns a restore function; always call it in `finally` so the live DOM
+ * never keeps the patches.
+ */
+function patchEdgesForCapture(viewportEl: HTMLElement): () => void {
+  const restores: Array<() => void> = [];
+
+  for (const path of viewportEl.querySelectorAll<SVGPathElement>(".react-flow__edge-path")) {
+    const computed = getComputedStyle(path);
+    const prev = path.getAttribute("style");
+    path.style.stroke = computed.stroke;
+    path.style.strokeWidth = computed.strokeWidth;
+    path.style.fill = computed.fill;
+    restores.push(() => {
+      if (prev === null) path.removeAttribute("style");
+      else path.setAttribute("style", prev);
+    });
+  }
+
+  const marker = document.querySelector("marker");
+  const defsSvg = marker?.closest("svg");
+  if (defsSvg && !viewportEl.contains(defsSvg)) {
+    const clone = defsSvg.cloneNode(true) as SVGSVGElement;
+    clone.setAttribute("width", "0");
+    clone.setAttribute("height", "0");
+    clone.setAttribute("aria-hidden", "true");
+    viewportEl.appendChild(clone);
+    restores.push(() => clone.remove());
+  }
+
+  return () => {
+    for (const restore of restores) restore();
+  };
+}
+
+/** Run an html-to-image capture with the edge patches applied, always restoring. */
+async function captureWithPatches<T>(viewportEl: HTMLElement, capture: () => Promise<T>): Promise<T> {
+  const restore = patchEdgesForCapture(viewportEl);
+  try {
+    return await capture();
+  } finally {
+    restore();
+  }
+}
+
+/**
  * Rasterize the diagram to a PNG and trigger a browser download. `bounds` is
  * the node bbox (e.g. from `useReactFlow().getNodesBounds(getNodes())`).
  */
 export async function exportPng(bounds: Rect, filename: string, opts: ExportPngOptions = {}): Promise<void> {
   const { viewportEl, options } = prepareCapture(bounds, opts);
-  const dataUrl = await toPng(viewportEl, options);
+  const dataUrl = await captureWithPatches(viewportEl, () => toPng(viewportEl, options));
   downloadDataUrl(dataUrl, filename);
 }
 
@@ -183,7 +243,7 @@ export async function exportPng(bounds: Rect, filename: string, opts: ExportPngO
  */
 export async function exportSvg(bounds: Rect, filename: string, opts: ExportPngOptions = {}): Promise<void> {
   const { viewportEl, options } = prepareCapture(bounds, opts);
-  const dataUrl = await toSvg(viewportEl, options);
+  const dataUrl = await captureWithPatches(viewportEl, () => toSvg(viewportEl, options));
   downloadDataUrl(dataUrl, filename);
 }
 
@@ -206,7 +266,7 @@ export async function copyPngToClipboard(bounds: Rect, opts: ExportPngOptions = 
       return { ok: false, error: "Clipboard image copy isn't supported in this browser" };
     }
     const { viewportEl, options } = prepareCapture(bounds, opts);
-    const blob = await toBlob(viewportEl, options);
+    const blob = await captureWithPatches(viewportEl, () => toBlob(viewportEl, options));
     if (!blob) {
       return { ok: false, error: "Failed to render diagram to an image" };
     }
