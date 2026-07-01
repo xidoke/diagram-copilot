@@ -35,7 +35,7 @@ export const ArchDslGrammar = (): Grammar => loadedArchDslGrammar ?? (loadedArch
           {
             "$type": "RuleCall",
             "rule": {
-              "$ref": "#/rules@5"
+              "$ref": "#/rules@6"
             },
             "arguments": []
           }
@@ -94,7 +94,7 @@ export const ArchDslGrammar = (): Grammar => loadedArchDslGrammar ?? (loadedArch
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@7"
+                "$ref": "#/rules@9"
               },
               "arguments": []
             }
@@ -110,7 +110,7 @@ export const ArchDslGrammar = (): Grammar => loadedArchDslGrammar ?? (loadedArch
     },
     {
       "$type": "ParserRule",
-      "name": "StatementLine",
+      "name": "Statement",
       "definition": {
         "$type": "Group",
         "elements": [
@@ -121,42 +121,79 @@ export const ArchDslGrammar = (): Grammar => loadedArchDslGrammar ?? (loadedArch
             "terminal": {
               "$type": "RuleCall",
               "rule": {
-                "$ref": "#/rules@4"
+                "$ref": "#/rules@5"
               },
               "arguments": []
             }
           },
           {
-            "$type": "Group",
+            "$type": "Alternatives",
             "elements": [
               {
-                "$type": "Keyword",
-                "value": ">"
+                "$type": "Group",
+                "elements": [
+                  {
+                    "$type": "Keyword",
+                    "value": ">"
+                  },
+                  {
+                    "$type": "Assignment",
+                    "feature": "target",
+                    "operator": "=",
+                    "terminal": {
+                      "$type": "RuleCall",
+                      "rule": {
+                        "$ref": "#/rules@5"
+                      },
+                      "arguments": []
+                    }
+                  },
+                  {
+                    "$type": "Assignment",
+                    "feature": "label",
+                    "operator": "=",
+                    "terminal": {
+                      "$type": "RuleCall",
+                      "rule": {
+                        "$ref": "#/rules@7"
+                      },
+                      "arguments": []
+                    },
+                    "cardinality": "?"
+                  }
+                ]
               },
               {
-                "$type": "Assignment",
-                "feature": "target",
-                "operator": "=",
-                "terminal": {
-                  "$type": "RuleCall",
-                  "rule": {
-                    "$ref": "#/rules@4"
+                "$type": "Group",
+                "elements": [
+                  {
+                    "$type": "Assignment",
+                    "feature": "attrs",
+                    "operator": "=",
+                    "terminal": {
+                      "$type": "RuleCall",
+                      "rule": {
+                        "$ref": "#/rules@8"
+                      },
+                      "arguments": []
+                    }
                   },
-                  "arguments": []
-                }
+                  {
+                    "$type": "RuleCall",
+                    "rule": {
+                      "$ref": "#/rules@4"
+                    },
+                    "arguments": [],
+                    "cardinality": "?"
+                  }
+                ]
               },
               {
-                "$type": "Assignment",
-                "feature": "label",
-                "operator": "=",
-                "terminal": {
-                  "$type": "RuleCall",
-                  "rule": {
-                    "$ref": "#/rules@6"
-                  },
-                  "arguments": []
+                "$type": "RuleCall",
+                "rule": {
+                  "$ref": "#/rules@4"
                 },
-                "cardinality": "?"
+                "arguments": []
               }
             ],
             "cardinality": "?"
@@ -172,6 +209,67 @@ export const ArchDslGrammar = (): Grammar => loadedArchDslGrammar ?? (loadedArch
     },
     {
       "$type": "ParserRule",
+      "fragment": true,
+      "name": "GroupBlock",
+      "definition": {
+        "$type": "Group",
+        "elements": [
+          {
+            "$type": "Assignment",
+            "feature": "isGroup",
+            "operator": "?=",
+            "terminal": {
+              "$type": "Keyword",
+              "value": "{"
+            }
+          },
+          {
+            "$type": "RuleCall",
+            "rule": {
+              "$ref": "#/rules@6"
+            },
+            "arguments": []
+          },
+          {
+            "$type": "Group",
+            "elements": [
+              {
+                "$type": "Assignment",
+                "feature": "body",
+                "operator": "+=",
+                "terminal": {
+                  "$type": "RuleCall",
+                  "rule": {
+                    "$ref": "#/rules@1"
+                  },
+                  "arguments": []
+                },
+                "cardinality": "?"
+              },
+              {
+                "$type": "RuleCall",
+                "rule": {
+                  "$ref": "#/rules@6"
+                },
+                "arguments": []
+              }
+            ],
+            "cardinality": "*"
+          },
+          {
+            "$type": "Keyword",
+            "value": "}"
+          }
+        ]
+      },
+      "definesHiddenTokens": false,
+      "entry": false,
+      "hiddenTokens": [],
+      "parameters": [],
+      "wildcard": false
+    },
+    {
+      "$type": "ParserRule",
       "name": "Name",
       "definition": {
         "$type": "Assignment",
@@ -180,7 +278,7 @@ export const ArchDslGrammar = (): Grammar => loadedArchDslGrammar ?? (loadedArch
         "terminal": {
           "$type": "RuleCall",
           "rule": {
-            "$ref": "#/rules@7"
+            "$ref": "#/rules@9"
           },
           "arguments": []
         },
@@ -215,10 +313,20 @@ export const ArchDslGrammar = (): Grammar => loadedArchDslGrammar ?? (loadedArch
     },
     {
       "$type": "TerminalRule",
+      "name": "ATTRS",
+      "definition": {
+        "$type": "RegexToken",
+        "regex": "/\\\\[[^\\\\]\\\\r\\\\n]*\\\\]/"
+      },
+      "fragment": false,
+      "hidden": false
+    },
+    {
+      "$type": "TerminalRule",
       "name": "WORD",
       "definition": {
         "$type": "RegexToken",
-        "regex": "/[^\\\\s>:]+/"
+        "regex": "/[^\\\\s>:{}\\\\[\\\\],]+/"
       },
       "fragment": false,
       "hidden": false
@@ -240,5 +348,5 @@ export const ArchDslGrammar = (): Grammar => loadedArchDslGrammar ?? (loadedArch
   "interfaces": [],
   "types": [],
   "usedGrammars": [],
-  "$comment": "/**\\n * arch-dsl — minimal eraser-style architecture DSL (DGC-26, v0.1 scope).\\n *\\n * Supported statements (one per line):\\n *   direction right|left|up|down\\n *   Node Name With Spaces\\n *   Some Node > Other Node\\n *   Some Node > Other Node: edge label to end of line\\n *\\n * Design notes:\\n * - Newlines are significant (statement separators), so NL is a real\\n *   terminal and only spaces/tabs are hidden.\\n * - Multi-word names are parsed as \`WORD+\` and re-joined with single\\n *   spaces during AST→doc mapping (whitespace inside names is\\n *   normalized). WORD is a negated class, so basic Unicode names\\n *   (e.g. Vietnamese) work for free.\\n * - Node vs edge lines are left-factored into one \`StatementLine\` rule\\n *   (\`Name ('>' Name (label)?)?\`) to stay LL(1): both start with an\\n *   unbounded \`WORD+\` and could not be distinguished with fixed\\n *   lookahead otherwise.\\n * - The direction value is a plain WORD (validated in TypeScript), so\\n *   \`right\`/\`left\`/\`up\`/\`down\` are NOT reserved words and stay usable\\n *   in node names. Only \`direction\` itself is a keyword.\\n * - EDGE_LABEL eats \`:\` plus the rest of the line, so labels may\\n *   contain further colons.\\n *\\n * v0.1 explicitly excludes groups \`{}\`, \`[icon: …]\` attributes,\\n * comments, and one-to-many edges (T9/T10).\\n */"
+  "$comment": "/**\\n * arch-dsl — minimal eraser-style architecture DSL (DGC-26 v0.1, DGC-29 v0.2).\\n *\\n * Supported statements (one per line, newline-significant):\\n *   direction right|left|up|down\\n *   Node Name With Spaces\\n *   Node Name [icon: server, color: orange]\\n *   Some Node > Other Node\\n *   Some Node > Other Node: edge label to end of line\\n *   Group Name [icon: …, color: …] {\\n *     Nested Node\\n *     Nested Group { … }\\n *   }\\n *\\n * Design notes:\\n * - Newlines are significant (statement separators), so NL is a real\\n *   terminal and only spaces/tabs are hidden.\\n * - Multi-word names are parsed as \`WORD+\` and re-joined with single\\n *   spaces during AST→doc mapping (whitespace inside names is\\n *   normalized). WORD is a negated class, so basic Unicode names\\n *   (e.g. Vietnamese) work for free.\\n * - After a name, one token of lookahead disambiguates the three\\n *   suffixes (all first-sets disjoint, LL(1)):\\n *     \`>\`      → edge\\n *     \`[\`      → attributes (then an optional \`{ … }\` group block)\\n *     \`{\`      → group block (no attributes)\\n *   No suffix at all → a plain node declaration.\\n * - The direction value is a plain WORD (validated in TypeScript), so\\n *   \`right\`/\`left\`/\`up\`/\`down\` are NOT reserved words and stay usable\\n *   in node names. Only \`direction\` itself is a keyword.\\n * - EDGE_LABEL eats \`:\` plus the rest of the line, so labels may\\n *   contain further colons (e.g. \\"ratio 2:1\\"). Because a bare \`:\`\\n *   always lexes as EDGE_LABEL, attributes cannot use \`:\` as a\\n *   structural token — instead the whole \`[ … ]\` block is one opaque\\n *   ATTRS terminal, split into \`key: value\` pairs in TypeScript.\\n * - WORD excludes the structural characters \`{ } [ ] ,\` so that group\\n *   blocks and attribute lists tokenize; consequently those characters\\n *   can no longer appear inside a node/group name (v0.1 already\\n *   excluded whitespace, \`>\` and \`:\`).\\n *\\n * v0.2 excludes comments and one-to-many edges (later tasks).\\n */"
 }`));
