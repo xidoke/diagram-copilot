@@ -118,17 +118,24 @@ function sendFile(res: ServerResponse, method: string, filePath: string, size: n
  *
  * When `mcpHandler` is provided, requests to {@link MCP_PATH} (any method —
  * the handler owns its own method policy) are forwarded to it instead of
- * the static pipeline.
+ * the static pipeline. Likewise `apiHandler`, when provided, receives every
+ * `/api/*` request (e.g. `POST /api/undo`, T31) — it owns its own method policy.
  */
 export function createRequestHandler(
   staticDir?: string,
   mcpHandler?: (req: IncomingMessage, res: ServerResponse) => Promise<void>,
+  apiHandler?: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>,
 ): (req: IncomingMessage, res: ServerResponse) => void {
   return (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
 
     if (mcpHandler && url.pathname === MCP_PATH) {
       void mcpHandler(req, res);
+      return;
+    }
+
+    if (apiHandler && url.pathname.startsWith("/api/")) {
+      void apiHandler(req, res);
       return;
     }
 

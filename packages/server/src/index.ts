@@ -18,6 +18,8 @@ import { createServer, WELCOME_WORKSPACE, WS_PATH } from "./server.js";
 import { createClientUpdateHandler } from "./client-updates.js";
 import { MCP_PATH } from "./http.js";
 import { createMcpHandler, type McpInfo } from "./mcp/handler.js";
+import { createHistoryStore } from "./history/store.js";
+import { createUndoApiHandler } from "./history/http.js";
 import { buildWelcomeMessages, createWorkspaceWatcher, type WorkspaceWatcher } from "./workspace/watcher.js";
 
 /** Fixed default port. Kept in sync with the MCP endpoint registration. */
@@ -102,6 +104,12 @@ async function main(): Promise<void> {
   const getWelcome = (): ServerMessage[] =>
     watcher ? buildWelcomeMessages(options.workspace, watcher.getState()) : [WELCOME_WORKSPACE];
 
+  // Undo/redo safety net (T31): a per-diagram snapshot ring persisted under the
+  // workspace's `.history/`. Created up front so its `onApplied` hook can be
+  // handed to the watcher below; the MCP tools and `/api/undo` read it back via
+  // the same mutable-watcher-ref pattern.
+  const history = createHistoryStore({ dir: options.workspace });
+
   // Live facts for MCP tools — same mutable-watcher-ref pattern as
   // `getWelcome`, so `ping` (and later T19/T20 tools) always answer from the
   // watcher's current state.
@@ -118,7 +126,13 @@ async function main(): Promise<void> {
     // Same mutable-watcher-ref pattern as `getWelcome`/`getMcpInfo`: the
     // watcher is created after the port is secured, so tools read `null` until
     // then and the live `WorkspaceOps` (list/open) afterwards.
-    mcpHandler: createMcpHandler({ getInfo: getMcpInfo, getWorkspace: () => watcher ?? null }),
+    mcpHandler: createMcpHandler({
+      getInfo: getMcpInfo,
+      getWorkspace: () => watcher ?? null,
+      getHistory: () => history,
+    }),
+    // Web ⌘Z / Undo button → same undo logic as the MCP tool, over HTTP (T31).
+    apiHandler: createUndoApiHandler(() => watcher ?? null, () => history),
     // Client (drawer/canvas) update frames → workspace writes with origin
     // routing + echo exclusion + baseVersion conflict handling (T21). Same
     // mutable-watcher-ref pattern: updates arriving before the watcher exists
@@ -139,7 +153,12 @@ async function main(): Promise<void> {
     throw error;
   }
 
-  watcher = createWorkspaceWatcher({ dir: options.workspace, broadcast: server.broadcast });
+  watcher = createWorkspaceWatcher({
+    dir: options.workspace,
+    broadcast: server.broadcast,
+    // Record every successful update as a pre-apply snapshot for undo/redo.
+    onApplied: history.onApplied,
+  });
   await watcher.start();
   const state = watcher.getState();
   console.log(

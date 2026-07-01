@@ -26,8 +26,10 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { registerGetDslGuideTool } from "./tools/guide.js";
 import { registerListIconsTool } from "./tools/icons.js";
 import type { WorkspaceOps } from "../workspace/watcher.js";
+import type { HistoryStore } from "../history/store.js";
 import { registerWorkspaceTools } from "./tools/workspace.js";
 import { registerDiagramTools } from "./tools/diagram.js";
+import { registerHistoryTools } from "./tools/history.js";
 
 /** MCP server identity advertised in the `initialize` result. */
 export const MCP_SERVER_NAME = "diagram-copilot";
@@ -55,6 +57,13 @@ export interface McpHandlerOptions {
    * not registered).
    */
   getWorkspace?: () => WorkspaceOps | null;
+  /**
+   * Live history store for `undo_diagram` / `redo_diagram` (T31). Wire to the
+   * shared {@link createHistoryStore} instance, returning `null` before it is
+   * ready. Registered only alongside a workspace; omit to leave the history
+   * tools out entirely.
+   */
+  getHistory?: () => HistoryStore | null;
 }
 
 /** A `node:http` request handler for the `/mcp` route. */
@@ -93,6 +102,10 @@ function registerTools(server: McpServer, options: McpHandlerOptions): void {
   if (options.getWorkspace !== undefined) {
     registerWorkspaceTools(server, options.getWorkspace);
     registerDiagramTools(server, options.getWorkspace);
+    // History (undo/redo) tools plug in only when a history store is also wired.
+    if (options.getHistory !== undefined) {
+      registerHistoryTools(server, options.getWorkspace, options.getHistory);
+    }
   }
 }
 

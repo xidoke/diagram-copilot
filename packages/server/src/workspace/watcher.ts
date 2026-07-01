@@ -37,6 +37,14 @@ export interface WorkspaceWatcherOptions {
    * exclude the originating socket (echo-loop prevention).
    */
   broadcast: (message: ServerMessage, options?: BroadcastOptions) => void;
+  /**
+   * Optional hook fired synchronously after every SUCCESSFUL
+   * {@link WorkspaceOps.update} write, carrying the pre-apply snapshot
+   * ({@link UpdateAppliedEvent}). Wired to the history store (T31) so undo/redo
+   * can restore prior content. Injected (not imported) so the watcher stays
+   * ignorant of the history module. Omit for a history-free watcher (tests).
+   */
+  onApplied?: (event: UpdateAppliedEvent) => void;
 }
 
 /** Snapshot of what the watcher currently knows about the workspace. */
@@ -93,6 +101,26 @@ export interface ReadResult {
   version: number;
   /** Human-readable reason when `ok` is `false` (unknown/invalid name, read error). */
   error?: string;
+}
+
+/**
+ * Payload handed to {@link WorkspaceWatcherOptions.onApplied} after every
+ * SUCCESSFUL {@link WorkspaceOps.update}: the pre-apply snapshot of the diagram
+ * plus the version it just moved to. The history store (T31) turns this into a
+ * restorable undo entry — passed through an injected hook so the watcher never
+ * imports the history module.
+ */
+export interface UpdateAppliedEvent {
+  /** Diagram name (file stem) that was updated. */
+  name: string;
+  /** DSL that was on disk immediately BEFORE this update — the state undo restores. */
+  previousDsl: string;
+  /** Accepted version `previousDsl` was served at (before this update's bump). */
+  previousVersion: number;
+  /** Origin of the update that just applied (`mcp` / `drawer` / `canvas`). */
+  origin: Origin;
+  /** New accepted version after this update. */
+  version: number;
 }
 
 /** Options for {@link WorkspaceOps.update} — who made the change, and who must not hear it back. */
@@ -242,7 +270,7 @@ function scanArchFileNames(dir: string): string[] {
 
 export function createWorkspaceWatcher(options: WorkspaceWatcherOptions): WorkspaceWatcher {
   const root = path.resolve(options.dir);
-  const { broadcast } = options;
+  const { broadcast, onApplied } = options;
 
   const diagrams = new Set<string>();
   const versions = new Map<string, number>();
@@ -488,9 +516,22 @@ export function createWorkspaceWatcher(options: WorkspaceWatcherOptions): Worksp
     }
 
     const filePath = path.join(root, `${stem}${ARCH_EXT}`);
+    // Snapshot the pre-apply state for the history hook (undo safety net, T31):
+    // read the current on-disk content BEFORE it is overwritten. Only paid when
+    // a hook is wired; a first write / missing file yields `undefined` (nothing
+    // to restore, so no entry is recorded).
+    const previousVersion = versions.get(stem) ?? 0;
+    let previousDsl: string | undefined;
+    if (onApplied !== undefined) {
+      try {
+        previousDsl = readFileSync(filePath, "utf8");
+      } catch {
+        previousDsl = undefined;
+      }
+    }
     writeFileSync(filePath, dsl);
     diagrams.add(stem);
-    const nextVersion = (versions.get(stem) ?? 0) + 1;
+    const nextVersion = previousVersion + 1;
     versions.set(stem, nextVersion);
     // Record before broadcasting so the debounced fs echo of this very write is
     // recognized and suppressed (no double bump, no duplicate frame).
@@ -516,6 +557,19 @@ export function createWorkspaceWatcher(options: WorkspaceWatcherOptions): Worksp
     // Only the diagram frame skips the originator — sending its own content
     // back would race whatever it typed since (the echo loop this task kills).
     broadcast(message, opts?.excludeSocket ? { excludeOrigin: opts.excludeSocket } : undefined);
+
+    // Notify the history hook AFTER the write + broadcast land, with the
+    // pre-apply snapshot so undo can restore it. Skipped when there was no
+    // prior content to restore (previousDsl undefined).
+    if (onApplied !== undefined && previousDsl !== undefined) {
+      onApplied({
+        name: stem,
+        previousDsl,
+        previousVersion,
+        origin: message.origin,
+        version: nextVersion,
+      });
+    }
 
     return { ok: true, name: stem, version: nextVersion, doc: result.doc };
   }

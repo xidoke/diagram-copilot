@@ -17,6 +17,7 @@ import { EmptyState, shouldShowEmptyState } from "./components/EmptyState.js";
 import { ExportMenu } from "./components/ExportMenu.js";
 import { StatusPill } from "./components/StatusPill.js";
 import { Toolbar } from "./components/Toolbar.js";
+import { UndoButton } from "./components/UndoButton.js";
 import { Drawer } from "./components/Drawer.js";
 import { useDiagramConnection } from "./connection/index.js";
 import { applyPrefs, loadLayoutPrefs, saveLayoutPrefs, type LayoutPrefs } from "./render/layoutOptions.js";
@@ -160,6 +161,7 @@ function DiagramCanvas() {
         </div>
       )}
       <StatusPill status={status} />
+      <UndoButton name={lastDiagram?.name ?? null} />
       <Drawer open={drawerOpen} onToggle={toggleDrawer} diagram={lastDiagram} send={send} />
     </div>
   );

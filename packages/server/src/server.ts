@@ -53,6 +53,13 @@ export interface CreateServerOptions {
    */
   mcpHandler?: McpRequestHandler;
   /**
+   * Handler for the HTTP JSON API routes (`/api/*`), built with
+   * `createUndoApiHandler` from `history/http.ts` (T31's `POST /api/undo`).
+   * Owns its own method policy. Omitted → `/api/*` falls through to the static
+   * pipeline (servers without a workspace, e.g. most tests).
+   */
+  apiHandler?: (req: http.IncomingMessage, res: http.ServerResponse) => void | Promise<void>;
+  /**
    * Handler for a schema-valid `update` frame from a connected client,
    * receiving the parsed message and the sending socket (so the workspace
    * layer can exclude the originator from the resulting broadcast, and send
@@ -99,7 +106,7 @@ export interface ServerHandle {
  */
 export function createServer(options: CreateServerOptions): ServerHandle {
   const httpServer = http.createServer(
-    createRequestHandler(options.staticDir, options.mcpHandler),
+    createRequestHandler(options.staticDir, options.mcpHandler, options.apiHandler),
   );
   const clients = new Set<WebSocket>();
 
