@@ -71,6 +71,9 @@ importers:
       '@diagram-copilot/core':
         specifier: workspace:*
         version: link:../core
+      '@diagram-copilot/icons':
+        specifier: workspace:*
+        version: link:../icons
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.29.0(zod@3.25.76)
@@ -80,6 +83,9 @@ importers:
       ws:
         specifier: ^8
         version: 8.21.0
+      zod:
+        specifier: ^3.24.0
+        version: 3.25.76
     devDependencies:
       '@types/node':
         specifier: ^22
