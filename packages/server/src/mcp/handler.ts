@@ -13,11 +13,12 @@
  * `sessionIdGenerator: () => randomUUID()`.
  *
  * Tool registration is centralized in {@link registerTools}: `ping` is
- * inline here, while `get_dsl_guide` (`./tools/guide.ts`) and `list_icons`
- * (`./tools/icons.ts`, T19) each live in their own module and are wired in
- * with one `register*Tool(server)` call. Follow-up tasks (`get_diagram`/
- * `put_diagram`, T20 …) plug in the same way, reading live state via
- * {@link McpHandlerOptions.getInfo} (or sibling getters added to the options).
+ * inline here, while each other tool lives in its own module and is wired in
+ * with one `register*Tools(server)` call — `get_dsl_guide` (`./tools/guide.ts`)
+ * and `list_icons` (`./tools/icons.ts`, T19); `list_diagrams`/`open_diagram`
+ * (`./tools/workspace.ts`, T22) and `get_diagram`/`set_diagram`
+ * (`./tools/diagram.ts`, T20), which additionally read/act on live workspace
+ * state via {@link McpHandlerOptions.getWorkspace}.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -26,6 +27,7 @@ import { registerGetDslGuideTool } from "./tools/guide.js";
 import { registerListIconsTool } from "./tools/icons.js";
 import type { WorkspaceOps } from "../workspace/watcher.js";
 import { registerWorkspaceTools } from "./tools/workspace.js";
+import { registerDiagramTools } from "./tools/diagram.js";
 
 /** MCP server identity advertised in the `initialize` result. */
 export const MCP_SERVER_NAME = "diagram-copilot";
@@ -86,9 +88,11 @@ function registerTools(server: McpServer, options: McpHandlerOptions): void {
   registerGetDslGuideTool(server);
   registerListIconsTool(server);
 
-  // Workspace tools plug in only when the server is wired with a workspace.
+  // Workspace + diagram tools plug in only when the server is wired with a
+  // workspace (a bare ping-only server omits them).
   if (options.getWorkspace !== undefined) {
     registerWorkspaceTools(server, options.getWorkspace);
+    registerDiagramTools(server, options.getWorkspace);
   }
 }
 
