@@ -9,7 +9,7 @@
     "diagram-copilot-server": "./dist/index.js"
   },
   "scripts": {
-    "dev": "tsx src/index.ts",
+    "dev": "tsx watch --clear-screen=false src/index.ts --workspace ../../examples",
     "test": "vitest run",
     "build": "tsc -p tsconfig.json"
   },
