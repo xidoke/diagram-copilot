@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   BackgroundVariant,
@@ -14,39 +14,76 @@ import "./tokens.css";
 import "./App.css";
 import { layoutDiagram } from "@diagram-copilot/layout";
 import { StatusPill } from "./components/StatusPill.js";
+import { Toolbar } from "./components/Toolbar.js";
 import { useDiagramConnection } from "./connection/index.js";
+import { applyPrefs, loadLayoutPrefs, saveLayoutPrefs, type LayoutPrefs } from "./render/layoutOptions.js";
 import { ArchGroup, ArchNode } from "./render/ArchNode.js";
 import { ARCH_GROUP_TYPE, ARCH_NODE_TYPE, toFlow } from "./render/toFlow.js";
 
 export const APP_TITLE = "diagram-copilot";
+
+/** Debounce window before a fitView fires, so a burst of diagram messages
+ *  (e.g. fast-typed edits) collapses into one fit instead of racing. */
+const FIT_VIEW_DEBOUNCE_MS = 100;
 
 const nodeTypes = { [ARCH_NODE_TYPE]: ArchNode, [ARCH_GROUP_TYPE]: ArchGroup };
 
 function DiagramCanvas() {
   const { status, lastDiagram, lastError } = useDiagramConnection();
   const [flow, setFlow] = useState<{ nodes: Node[]; edges: Edge[] }>({ nodes: [], edges: [] });
+  const [prefs, setPrefs] = useState<LayoutPrefs>(() => loadLayoutPrefs());
   const { fitView } = useReactFlow();
+
+  useEffect(() => {
+    saveLayoutPrefs(prefs);
+  }, [prefs]);
 
   useEffect(() => {
     if (!lastDiagram) return;
     let stale = false;
-    layoutDiagram(lastDiagram.doc)
+    const { doc, options } = applyPrefs(lastDiagram.doc, prefs);
+    layoutDiagram(doc, options)
       .then((graph) => {
         if (stale) return;
-        setFlow(toFlow(lastDiagram.doc, graph));
+        setFlow(toFlow(doc, graph));
       })
       .catch((err) => console.error("layout failed", err));
     return () => {
       stale = true;
     };
-  }, [lastDiagram]);
+  }, [lastDiagram, prefs]);
 
+  // Robust fitView: a diagram message can arrive in bursts (fast edits), and
+  // React Flow needs the new nodes actually painted before it can measure
+  // their bbox. So: debounce 100ms to collapse a burst into one fit, then
+  // wait two animation frames (one commit + one paint) before calling
+  // fitView. A brand-new diagram (name changed) gets the full 250ms fit
+  // duration; an in-place update to the same diagram gets a lighter 150ms
+  // fit — we always re-fit on every update rather than trying to detect
+  // "small enough" bbox deltas to preserve zoom, since that heuristic added
+  // real complexity for a marginal UX gain (see DGC-36 notes).
+  const prevDiagramNameRef = useRef<string | null>(null);
   useEffect(() => {
-    if (flow.nodes.length) {
-      const t = setTimeout(() => fitView({ padding: 0.12, duration: 250 }), 50);
-      return () => clearTimeout(t);
-    }
-  }, [flow, fitView]);
+    if (!flow.nodes.length) return;
+    const isNewDiagram = lastDiagram?.name !== prevDiagramNameRef.current;
+    prevDiagramNameRef.current = lastDiagram?.name ?? null;
+
+    let raf1 = 0;
+    let raf2 = 0;
+    const debounceId = window.setTimeout(() => {
+      raf1 = requestAnimationFrame(() => {
+        raf2 = requestAnimationFrame(() => {
+          fitView({ padding: 0.12, duration: isNewDiagram ? 250 : 150 });
+        });
+      });
+    }, FIT_VIEW_DEBOUNCE_MS);
+
+    return () => {
+      window.clearTimeout(debounceId);
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [flow, lastDiagram, fitView]);
 
   // Keep rendering the last good state; show the banner only while the error
   // is current — a diagram-error carries the version of the last ACCEPTED dsl,
@@ -64,6 +101,7 @@ function DiagramCanvas() {
           <b>{lastDiagram.name}</b> · v{lastDiagram.version}
         </div>
       )}
+      <Toolbar prefs={prefs} onChange={setPrefs} />
       {showError && lastError && (
         <div className="error-banner">
           <b>{lastError.name}</b>:{" "}

@@ -1,0 +1,87 @@
+/**
+ * Floating layout toolbar (theme B: dark blueprint), top-right — mirrors the
+ * translucent panel look of `.diagram-info`. Two groups:
+ *   - Spacing: compact / normal / airy, radio-style (always exactly one active).
+ *   - Direction: → ↓ ← ↑ plus "auto" (clears the override, follows the
+ *     document's own `direction`). Also radio-style.
+ *
+ * Pure presentational component — `onChange` is the only way state moves, so
+ * `App.tsx` owns the actual prefs state + persistence (T16).
+ */
+import type { Direction } from "@diagram-copilot/core";
+import {
+  DIRECTION_ORDER,
+  SPACING_PRESET_ORDER,
+  type LayoutPrefs,
+  type SpacingPreset,
+} from "../render/layoutOptions.js";
+
+const SPACING_META: Record<SpacingPreset, { label: string; title: string }> = {
+  compact: { label: "C", title: "Spacing: compact" },
+  normal: { label: "N", title: "Spacing: normal" },
+  airy: { label: "A", title: "Spacing: airy" },
+};
+
+const DIRECTION_META: Record<Direction, { icon: string; title: string }> = {
+  right: { icon: "→", title: "Direction: left to right" },
+  down: { icon: "↓", title: "Direction: top to bottom" },
+  left: { icon: "←", title: "Direction: right to left" },
+  up: { icon: "↑", title: "Direction: bottom to top" },
+};
+
+export interface ToolbarProps {
+  prefs: LayoutPrefs;
+  onChange: (prefs: LayoutPrefs) => void;
+}
+
+export function Toolbar({ prefs, onChange }: ToolbarProps) {
+  return (
+    <div className="toolbar">
+      <div className="toolbar-group" role="group" aria-label="Spacing">
+        {SPACING_PRESET_ORDER.map((preset) => {
+          const meta = SPACING_META[preset];
+          const active = prefs.spacing === preset;
+          return (
+            <button
+              key={preset}
+              type="button"
+              title={meta.title}
+              aria-pressed={active}
+              className={`toolbar-btn${active ? " toolbar-btn--active" : ""}`}
+              onClick={() => onChange({ ...prefs, spacing: preset })}
+            >
+              {meta.label}
+            </button>
+          );
+        })}
+      </div>
+      <div className="toolbar-group" role="group" aria-label="Direction">
+        {DIRECTION_ORDER.map((direction) => {
+          const meta = DIRECTION_META[direction];
+          const active = prefs.directionOverride === direction;
+          return (
+            <button
+              key={direction}
+              type="button"
+              title={meta.title}
+              aria-pressed={active}
+              className={`toolbar-btn${active ? " toolbar-btn--active" : ""}`}
+              onClick={() => onChange({ ...prefs, directionOverride: direction })}
+            >
+              {meta.icon}
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          title="Direction: auto (follow the diagram)"
+          aria-pressed={prefs.directionOverride === undefined}
+          className={`toolbar-btn toolbar-btn--auto${prefs.directionOverride === undefined ? " toolbar-btn--active" : ""}`}
+          onClick={() => onChange({ spacing: prefs.spacing })}
+        >
+          auto
+        </button>
+      </div>
+    </div>
+  );
+}
