@@ -23,6 +23,15 @@ One statement per line. Whitespace inside a name is collapsed to single
 spaces; leading/trailing blank lines and indentation are ignored. Node and
 group ids are case-sensitive and Unicode-safe (Vietnamese names work fine).
 
+WORKFLOW (editing an existing diagram)
+  1. Call get_diagram FIRST to read the current DSL — never edit blind.
+  2. Change the text, then call set_diagram with the FULL document (a
+     whole-file write, not a patch — it replaces everything).
+  3. set_diagram validates before writing: on failure nothing is saved and
+     each problem returns as "line X, col Y: message" — fix that exact
+     line/col and call set_diagram again until it passes. (A brand-new
+     diagram can skip straight to set_diagram.)
+
 1. direction (optional, one line, defaults to "right")
    direction right   // or: left, up, down
 
@@ -61,10 +70,11 @@ group ids are case-sensitive and Unicode-safe (Vietnamese names work fine).
 7. Comments — "//" to end of line, on its own line or trailing a statement.
    Comment wins over label text: "A > B: cache // hot" produces the label
    "cache" (everything from "//" onward is dropped, even inside a label).
-   A single "/" is fine in a name or label (e.g. "read/write", "TCP/IP") —
-   only a double slash starts a comment.
+   A single "/" is fine in a name or label ("read/write", "TCP/IP") — only a
+   double slash starts a comment.
    // internal services
-   Cache [icon: redis] // in-memory
+   Cache [icon: redis] // cache-aside, 60s TTL
+   Prefer comments that record design intent (why a queue, which TTL/failover).
 
 Valid color tokens (anything else falls back to the default theme accent):
   blue, orange, green, red, purple, pink, yellow, teal, gray
@@ -73,21 +83,26 @@ Icons: call the list_icons tool to browse ids/aliases before using [icon: ...].
 An id that list_icons doesn't know still renders (generic box fallback), so
 prefer a real id/alias for a recognizable diagram.
 
-Full example (direction, groups, icons, colors, one-to-many, comments):
+Full example (direction, two-tier nested groups, icons, colors, one-to-many,
+comments, and an edge that crosses a group boundary):
 
   direction right
 
   Client [icon: monitor, color: blue]
 
-  VPC [color: gray] {
+  VPC [color: gray] {              // outer group
     API [icon: server, color: orange]
-    Database [icon: postgresql, color: teal]
+    Data Layer [color: teal] {     // group nested inside VPC (tier 2)
+      Database [icon: postgresql]
+      Cache [icon: redis]          // cache-aside, 60s TTL
+    }
 
     API > Database: reads/writes
+    API > Cache: cache-aside
   }
 
-  Client > API: HTTPS
-  API > Cache, Queue: publishes // fan-out to two implicit nodes
+  Client > API: HTTPS              // edge crosses the VPC boundary
+  API > Queue, Worker: publishes   // fan-out to two implicit nodes
 `;
 
 /** Registers the `get_dsl_guide` tool on `server`. No input, plain text output. */
