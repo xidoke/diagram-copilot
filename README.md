@@ -1,5 +1,8 @@
 # diagram-copilot
 
+<!-- Placeholder: thay OWNER bằng tên chủ repo trên GitHub khi push (repo hiện local-only, chưa có remote GitHub). -->
+![CI](https://github.com/OWNER/diagram-copilot/actions/workflows/ci.yml/badge.svg)
+
 **System Design Studio, local-first, AI-native.** Sơ đồ cloud architecture đẹp, sinh/sửa bằng cách trò chuyện với Claude Code (qua MCP) — chạy hoàn toàn local, không cần API key riêng.
 
 > Trạng thái: pre-v0.1 — đang xây theo [ROADMAP](docs/ROADMAP.md).
