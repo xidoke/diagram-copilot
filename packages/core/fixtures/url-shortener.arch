@@ -1,0 +1,42 @@
+// url-shortener.arch — golden fixture (DGC-31)
+//
+// The textbook "design a URL shortener" system-design sketch: a client
+// behind a load balancer that fans out to two API server instances, which
+// share a Redis cache and a Postgres database. Click analytics are pushed
+// onto a queue so the write path never blocks the redirect response.
+//
+// Read path  (GET /:code):
+//   Client -> LB -> API Server -> Cache Redis (hit)  -> 302 redirect
+//                              -> Postgres (miss, then warm the cache)
+// Write path (POST /shorten):
+//   Client -> LB -> API Server -> Postgres (insert code) -> Cache Redis (warm)
+//
+// Every API request also fires an analytics event onto a queue, decoupling
+// the click-tracking write from the hot redirect path.
+
+direction right
+
+Client [icon: monitor]
+
+Service tier {
+  LB [icon: network, color: blue]
+  API Server A [icon: server, color: orange]
+  API Server B [icon: server, color: orange]
+}
+
+Data tier {
+  Cache Redis [icon: redis, color: red]
+  Postgres [icon: postgresql, color: blue]
+  Analytics Queue [icon: list, color: pink]
+}
+
+Client > LB: HTTPS request
+LB > API Server A, API Server B: round robin
+
+API Server A > Cache Redis: GET short_code
+API Server A > Postgres: fallback on cache miss
+API Server A > Analytics Queue: click event
+
+API Server B > Cache Redis: GET short_code
+API Server B > Postgres: fallback on cache miss
+API Server B > Analytics Queue: click event
