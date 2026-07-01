@@ -129,6 +129,13 @@ body {
   border-left-width: var(--node-accent-border-width);
   border-left-color: var(--node-accent, var(--accent));
 }
+/* Leaf hover: brighten the border; keep an accent node's left edge colored. */
+.arch-node:hover {
+  border-color: var(--node-hover-border);
+}
+.arch-node--accent:hover {
+  border-left-color: var(--node-accent, var(--accent));
+}
 .arch-node-chip {
   width: var(--icon-chip-size);
   height: var(--icon-chip-size);
@@ -158,6 +165,24 @@ body {
   border: var(--group-border-width) dashed var(--border);
   background: var(--group-bg);
   border-radius: var(--group-radius);
+  /* Depth tint overlay: a full-bleed inset shadow layered over the background
+     (base or accent) so deeper nesting reads darker. Clipped to the padding
+     box, so the dashed border and label stay crisp. Depth 0 is transparent. */
+  box-shadow: inset 0 0 0 999px var(--group-depth-tint, transparent);
+}
+/* Depth-based fill: each level bumps the tint alpha; clamped at 3 in the
+   component. Tokens live in tokens.css so a light theme can re-tune them. */
+.arch-group--depth-0 {
+  --group-depth-tint: var(--group-depth-0-tint);
+}
+.arch-group--depth-1 {
+  --group-depth-tint: var(--group-depth-1-tint);
+}
+.arch-group--depth-2 {
+  --group-depth-tint: var(--group-depth-2-tint);
+}
+.arch-group--depth-3 {
+  --group-depth-tint: var(--group-depth-3-tint);
 }
 /* Subtle emphasis when the group carries an explicit `color`: tint the
    dashed outline and background instead of a heavier treatment, so nested
@@ -166,15 +191,37 @@ body {
   border-color: var(--node-accent, var(--accent));
   background: var(--group-accent-bg);
 }
+/* Hover: brighten the dashed outline a touch (groups stay non-selectable). */
+.arch-group:hover {
+  border-color: var(--group-hover-border);
+}
+.arch-group--accent:hover {
+  border-color: var(--node-accent, var(--accent));
+}
 .arch-group-label {
   position: absolute;
   top: 8px;
   left: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: 11px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-dim);
   font-weight: 700;
+}
+.arch-group-chip {
+  width: var(--group-chip-size);
+  height: var(--group-chip-size);
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.arch-group-chip svg {
+  width: 100%;
+  height: 100%;
 }
 .arch-group--accent > .arch-group-label {
   color: var(--node-accent, var(--text-dim));

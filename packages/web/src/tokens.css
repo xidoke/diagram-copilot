@@ -50,4 +50,21 @@
   --group-border-width: 1.5px;
   --group-bg: rgba(50, 110, 220, 0.05);
   --group-accent-bg: rgba(50, 110, 220, 0.08);
+  /* Icon shown beside a group label when the group has an `icon`. */
+  --group-chip-size: 12px;
+
+  /*
+   * Depth tint — a translucent overlay layered over the group's background so
+   * nested groups read progressively "deeper". Depth 0 is transparent (root
+   * groups stay on the plain `--group-bg`); alpha rises gently and is clamped
+   * at depth 3. A light theme only needs to swap these four values.
+   */
+  --group-depth-0-tint: transparent;
+  --group-depth-1-tint: rgba(90, 140, 230, 0.05);
+  --group-depth-2-tint: rgba(90, 140, 230, 0.09);
+  --group-depth-3-tint: rgba(90, 140, 230, 0.13);
+
+  /* Hover feedback — a brighter border than the resting `--border`. */
+  --node-hover-border: #47618c;
+  --group-hover-border: #47618c;
 }

@@ -13,6 +13,11 @@ export interface ArchNodeData extends Record<string, unknown> {
   icon?: string;
   /** Color token name (e.g. `"orange"`), resolved by `resolveColor`. */
   color?: string;
+  /**
+   * Nesting depth for a group (0 = root group, 1 = one level in, …). Only set
+   * on group nodes; drives the depth-based background tint in `ArchGroup`.
+   */
+  depth?: number;
 }
 
 interface NodeMeta {
@@ -33,6 +38,20 @@ export function toFlow(doc: DiagramDoc, graph: PositionedGraph): { nodes: Node[]
 
   const nodes: Node[] = [];
 
+  // Nesting depth per group (0 = root). Walks the `parentId` chain, which the
+  // model guarantees is acyclic, and memoizes so each group is computed once.
+  const parentOf = new Map<string, string | undefined>();
+  for (const g of graph.groups) parentOf.set(g.id, g.parentId);
+  const depthCache = new Map<string, number>();
+  const groupDepth = (id: string): number => {
+    const cached = depthCache.get(id);
+    if (cached !== undefined) return cached;
+    const parent = parentOf.get(id);
+    const d = parent === undefined ? 0 : groupDepth(parent) + 1;
+    depthCache.set(id, d);
+    return d;
+  };
+
   for (const g of graph.groups) {
     const m = meta.get(g.id);
     nodes.push({
@@ -42,6 +61,7 @@ export function toFlow(doc: DiagramDoc, graph: PositionedGraph): { nodes: Node[]
       data: {
         label: m?.label ?? g.id,
         direction: doc.direction,
+        depth: groupDepth(g.id),
         ...(m?.icon !== undefined ? { icon: m.icon } : {}),
         ...(m?.color !== undefined ? { color: m.color } : {}),
       } satisfies ArchNodeData,

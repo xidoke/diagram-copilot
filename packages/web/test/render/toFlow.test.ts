@@ -78,4 +78,76 @@ describe("toFlow", () => {
     expect("icon" in (client?.data ?? {})).toBe(false);
     expect("color" in (client?.data ?? {})).toBe(false);
   });
+
+  it("tags the group with depth 0 (root)", () => {
+    const { nodes } = toFlow(doc, graph);
+    const vpc = nodes.find((n) => n.id === "VPC");
+    expect(vpc?.data.depth).toBe(0);
+  });
+});
+
+describe("toFlow — nested group depth", () => {
+  const nestedDoc: DiagramDoc = {
+    type: "architecture",
+    direction: "right",
+    nodes: [{ id: "DB", label: "DB", groupId: "Inner" }],
+    groups: [
+      { id: "Outer", label: "Outer" },
+      { id: "Mid", label: "Mid", parentId: "Outer" },
+      { id: "Inner", label: "Inner", parentId: "Mid" },
+    ],
+    edges: [],
+  };
+
+  const nestedGraph: PositionedGraph = {
+    nodes: [{ id: "DB", x: 8, y: 8, width: 120, height: 48, parentId: "Inner" }],
+    groups: [
+      { id: "Outer", x: 0, y: 0, width: 300, height: 220 },
+      { id: "Mid", x: 20, y: 20, width: 240, height: 160, parentId: "Outer" },
+      { id: "Inner", x: 20, y: 20, width: 180, height: 100, parentId: "Mid" },
+    ],
+    edges: [],
+    width: 300,
+    height: 220,
+  };
+
+  it("computes depth along the parentId chain (0/1/2)", () => {
+    const { nodes } = toFlow(nestedDoc, nestedGraph);
+    const depthOf = (id: string) => nodes.find((n) => n.id === id)?.data.depth;
+    expect(depthOf("Outer")).toBe(0);
+    expect(depthOf("Mid")).toBe(1);
+    expect(depthOf("Inner")).toBe(2);
+  });
+});
+
+describe("toFlow — edge targeting a group", () => {
+  const groupEdgeDoc: DiagramDoc = {
+    type: "architecture",
+    direction: "right",
+    nodes: [{ id: "API", label: "API" }],
+    groups: [{ id: "VPC", label: "VPC" }],
+    // `API > VPC` — grammar (T9) allows an edge to terminate on a group id.
+    edges: [{ id: "e1", from: "API", to: "VPC" }],
+  };
+
+  const groupEdgeGraph: PositionedGraph = {
+    nodes: [{ id: "API", x: 0, y: 0, width: 120, height: 48 }],
+    groups: [{ id: "VPC", x: 200, y: 0, width: 180, height: 120 }],
+    edges: [
+      {
+        id: "e1",
+        from: "API",
+        to: "VPC",
+        sections: [{ startPoint: { x: 120, y: 24 }, endPoint: { x: 200, y: 60 } }],
+      },
+    ],
+    width: 380,
+    height: 120,
+  };
+
+  it("preserves source/target when an edge points at a group", () => {
+    const { edges } = toFlow(groupEdgeDoc, groupEdgeGraph);
+    expect(edges).toHaveLength(1);
+    expect(edges[0]).toMatchObject({ id: "e1", source: "API", target: "VPC" });
+  });
 });
