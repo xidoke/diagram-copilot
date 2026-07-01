@@ -16,11 +16,13 @@ import { layoutDiagram } from "@diagram-copilot/layout";
 import { StatusPill } from "./components/StatusPill.js";
 import { useDiagramConnection } from "./connection/index.js";
 import { ArchGroup, ArchNode } from "./render/ArchNode.js";
+import { ELK_EDGE_TYPE, ElkEdge, ElkEdgeMarkerDefs } from "./render/ElkEdge.js";
 import { ARCH_GROUP_TYPE, ARCH_NODE_TYPE, toFlow } from "./render/toFlow.js";
 
 export const APP_TITLE = "diagram-copilot";
 
 const nodeTypes = { [ARCH_NODE_TYPE]: ArchNode, [ARCH_GROUP_TYPE]: ArchGroup };
+const edgeTypes = { [ELK_EDGE_TYPE]: ElkEdge };
 
 function DiagramCanvas() {
   const { status, lastDiagram, lastError } = useDiagramConnection();
@@ -72,10 +74,13 @@ function DiagramCanvas() {
             .join(" · ")}
         </div>
       )}
+      {/* Arrowhead marker defs — referenced by every elk edge via url(#…). */}
+      <ElkEdgeMarkerDefs />
       <ReactFlow
         nodes={flow.nodes}
         edges={flow.edges}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         proOptions={{ hideAttribution: true }}
         minZoom={0.2}
         fitView

@@ -231,3 +231,30 @@ body {
   stroke: var(--accent);
   stroke-width: 1.6;
 }
+/* Edge feedback (T15): hover/selected brighten and thicken the line — no
+   animation. The arrowhead marker uses userSpaceOnUse so it stays put.
+   `stroke` is repeated here because xyflow's own `.selected` rule would
+   otherwise repaint the path in its gray default. */
+.react-flow__edge:hover .react-flow__edge-path,
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: var(--accent);
+  stroke-width: 2;
+  filter: brightness(1.35);
+}
+
+/* ELK edge label (T15) — rides the longest segment, on a translucent panel
+   like the other floating chrome so it stays legible over the grid. */
+.elk-edge-label {
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+  background: var(--panel-translucent);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px 7px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+  backdrop-filter: blur(4px);
+  white-space: nowrap;
+}
