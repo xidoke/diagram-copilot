@@ -1,0 +1,372 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`golden fixtures — snapshot + structural assertions > news-feed.arch: nested VPC with Feed service + Data stores, Kafka fan-out 1`] = `
+{
+  "direction": "right",
+  "edges": [
+    {
+      "from": "Client",
+      "id": "e1",
+      "to": "CDN",
+    },
+    {
+      "from": "CDN",
+      "id": "e2",
+      "to": "LB",
+    },
+    {
+      "from": "LB",
+      "id": "e3",
+      "label": "HTTPS request",
+      "to": "API Gateway",
+    },
+    {
+      "from": "API Gateway",
+      "id": "e4",
+      "label": "verify token",
+      "to": "Auth Service",
+    },
+    {
+      "from": "API Gateway",
+      "id": "e5",
+      "label": "publish post",
+      "to": "Fanout Worker",
+    },
+    {
+      "from": "API Gateway",
+      "id": "e6",
+      "label": "index post",
+      "to": "Search Index",
+    },
+    {
+      "from": "API Gateway",
+      "id": "e7",
+      "label": "upload media",
+      "to": "Object Storage",
+    },
+    {
+      "from": "Fanout Worker",
+      "id": "e8",
+      "label": "persist post",
+      "to": "Postgres",
+    },
+    {
+      "from": "Fanout Worker",
+      "id": "e9",
+      "label": "write feed cache",
+      "to": "Redis Cache",
+    },
+    {
+      "from": "Fanout Worker",
+      "id": "e10",
+      "label": "enqueue fanout job",
+      "to": "Kafka Queue",
+    },
+    {
+      "from": "Kafka Queue",
+      "id": "e11",
+      "label": "consume fanout job",
+      "to": "Notification Service",
+    },
+  ],
+  "groups": [
+    {
+      "id": "VPC",
+      "label": "VPC",
+    },
+    {
+      "id": "Feed service",
+      "label": "Feed service",
+      "parentId": "VPC",
+    },
+    {
+      "id": "Data stores",
+      "label": "Data stores",
+      "parentId": "VPC",
+    },
+  ],
+  "nodes": [
+    {
+      "icon": "monitor",
+      "id": "Client",
+      "label": "Client",
+    },
+    {
+      "color": "purple",
+      "icon": "cloud",
+      "id": "CDN",
+      "label": "CDN",
+    },
+    {
+      "color": "blue",
+      "icon": "network",
+      "id": "LB",
+      "label": "LB",
+    },
+    {
+      "color": "orange",
+      "groupId": "Feed service",
+      "icon": "server",
+      "id": "API Gateway",
+      "label": "API Gateway",
+    },
+    {
+      "color": "gray",
+      "groupId": "Feed service",
+      "icon": "lock",
+      "id": "Auth Service",
+      "label": "Auth Service",
+    },
+    {
+      "color": "yellow",
+      "groupId": "Feed service",
+      "icon": "cpu",
+      "id": "Fanout Worker",
+      "label": "Fanout Worker",
+    },
+    {
+      "color": "pink",
+      "groupId": "Feed service",
+      "icon": "bell",
+      "id": "Notification Service",
+      "label": "Notification Service",
+    },
+    {
+      "color": "red",
+      "groupId": "Data stores",
+      "icon": "redis",
+      "id": "Redis Cache",
+      "label": "Redis Cache",
+    },
+    {
+      "color": "blue",
+      "groupId": "Data stores",
+      "icon": "postgresql",
+      "id": "Postgres",
+      "label": "Postgres",
+    },
+    {
+      "color": "gray",
+      "groupId": "Data stores",
+      "icon": "hard-drive",
+      "id": "Object Storage",
+      "label": "Object Storage",
+    },
+    {
+      "color": "teal",
+      "groupId": "Data stores",
+      "icon": "elasticsearch",
+      "id": "Search Index",
+      "label": "Search Index",
+    },
+    {
+      "color": "black",
+      "groupId": "VPC",
+      "icon": "apachekafka",
+      "id": "Kafka Queue",
+      "label": "Kafka Queue",
+    },
+  ],
+  "type": "architecture",
+}
+`;
+
+exports[`golden fixtures — snapshot + structural assertions > rate-limiter.arch: Vietnamese client, Edge + Backend groups 1`] = `
+{
+  "direction": "right",
+  "edges": [
+    {
+      "from": "Người dùng",
+      "id": "e1",
+      "label": "gửi yêu cầu",
+      "to": "Gateway",
+    },
+    {
+      "from": "Gateway",
+      "id": "e2",
+      "label": "kiểm tra giới hạn",
+      "to": "Rate Limiter",
+    },
+    {
+      "from": "Rate Limiter",
+      "id": "e3",
+      "label": "đọc/ghi bucket",
+      "to": "Rules Cache",
+    },
+    {
+      "from": "Rate Limiter",
+      "id": "e4",
+      "label": "cho phép nếu còn quota",
+      "to": "API Backend",
+    },
+  ],
+  "groups": [
+    {
+      "id": "Edge",
+      "label": "Edge",
+    },
+    {
+      "id": "Backend",
+      "label": "Backend",
+    },
+  ],
+  "nodes": [
+    {
+      "icon": "monitor",
+      "id": "Người dùng",
+      "label": "Người dùng",
+    },
+    {
+      "color": "blue",
+      "groupId": "Edge",
+      "icon": "shield",
+      "id": "Gateway",
+      "label": "Gateway",
+    },
+    {
+      "color": "orange",
+      "groupId": "Edge",
+      "icon": "cpu",
+      "id": "Rate Limiter",
+      "label": "Rate Limiter",
+    },
+    {
+      "color": "red",
+      "groupId": "Edge",
+      "icon": "redis",
+      "id": "Rules Cache",
+      "label": "Rules Cache",
+    },
+    {
+      "color": "green",
+      "groupId": "Backend",
+      "icon": "server",
+      "id": "API Backend",
+      "label": "API Backend",
+    },
+  ],
+  "type": "architecture",
+}
+`;
+
+exports[`golden fixtures — snapshot + structural assertions > url-shortener.arch: client + service tier + data tier 1`] = `
+{
+  "direction": "right",
+  "edges": [
+    {
+      "from": "Client",
+      "id": "e1",
+      "label": "HTTPS request",
+      "to": "LB",
+    },
+    {
+      "from": "LB",
+      "id": "e2",
+      "label": "round robin",
+      "to": "API Server A",
+    },
+    {
+      "from": "LB",
+      "id": "e3",
+      "label": "round robin",
+      "to": "API Server B",
+    },
+    {
+      "from": "API Server A",
+      "id": "e4",
+      "label": "GET short_code",
+      "to": "Cache Redis",
+    },
+    {
+      "from": "API Server A",
+      "id": "e5",
+      "label": "fallback on cache miss",
+      "to": "Postgres",
+    },
+    {
+      "from": "API Server A",
+      "id": "e6",
+      "label": "click event",
+      "to": "Analytics Queue",
+    },
+    {
+      "from": "API Server B",
+      "id": "e7",
+      "label": "GET short_code",
+      "to": "Cache Redis",
+    },
+    {
+      "from": "API Server B",
+      "id": "e8",
+      "label": "fallback on cache miss",
+      "to": "Postgres",
+    },
+    {
+      "from": "API Server B",
+      "id": "e9",
+      "label": "click event",
+      "to": "Analytics Queue",
+    },
+  ],
+  "groups": [
+    {
+      "id": "Service tier",
+      "label": "Service tier",
+    },
+    {
+      "id": "Data tier",
+      "label": "Data tier",
+    },
+  ],
+  "nodes": [
+    {
+      "icon": "monitor",
+      "id": "Client",
+      "label": "Client",
+    },
+    {
+      "color": "blue",
+      "groupId": "Service tier",
+      "icon": "network",
+      "id": "LB",
+      "label": "LB",
+    },
+    {
+      "color": "orange",
+      "groupId": "Service tier",
+      "icon": "server",
+      "id": "API Server A",
+      "label": "API Server A",
+    },
+    {
+      "color": "orange",
+      "groupId": "Service tier",
+      "icon": "server",
+      "id": "API Server B",
+      "label": "API Server B",
+    },
+    {
+      "color": "red",
+      "groupId": "Data tier",
+      "icon": "redis",
+      "id": "Cache Redis",
+      "label": "Cache Redis",
+    },
+    {
+      "color": "blue",
+      "groupId": "Data tier",
+      "icon": "postgresql",
+      "id": "Postgres",
+      "label": "Postgres",
+    },
+    {
+      "color": "pink",
+      "groupId": "Data tier",
+      "icon": "list",
+      "id": "Analytics Queue",
+      "label": "Analytics Queue",
+    },
+  ],
+  "type": "architecture",
+}
+`;
