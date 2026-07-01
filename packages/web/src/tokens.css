@@ -1,0 +1,30 @@
+/**
+ * Design tokens — dark blueprint theme (theme B), matching
+ * spikes/reactflow-elk-layout/src/styles.css. CSS variables only; actual
+ * component styles live in App.css / component-local stylesheets and
+ * reference these.
+ */
+:root {
+  /* Surfaces */
+  --bg: #0b0e14;
+  --panel: #141b28;
+  --panel-translucent: #12182590;
+  --border: #2c3f60;
+
+  /* Text */
+  --text: #dfe8ff;
+  --text-dim: #9fb4d8;
+  --text-strong: #cfe0ff;
+
+  /* Accent + grid */
+  --accent: #4aa3ff;
+  --grid-dot: #1a2740;
+
+  /* Status */
+  --status-connected: #28c840;
+  --status-connected-bg: rgba(40, 200, 64, 0.14);
+  --status-connecting: #9fb4d8;
+  --status-connecting-bg: rgba(159, 180, 216, 0.1);
+  --status-disconnected: #ff6b6b;
+  --status-disconnected-bg: rgba(255, 107, 107, 0.14);
+}
