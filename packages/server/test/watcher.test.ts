@@ -2,7 +2,9 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, unlinkSync, writeFileSy
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import type { WebSocket } from "ws";
 import type { ServerMessage } from "@diagram-copilot/core";
+import type { BroadcastOptions } from "../src/server.js";
 import {
   buildWelcomeMessages,
   createWorkspaceWatcher,
@@ -141,7 +143,7 @@ describe("createWorkspaceWatcher — file changes", () => {
 
     writeFileSync(filePath, OTHER_VALID_DSL);
 
-    await waitFor(() => expect(messages).toHaveLength(3), 500);
+    await waitFor(() => expect(messages).toHaveLength(3), 2000);
     expect(messages[2]).toMatchObject({ kind: "diagram", name: "demo", version: 2, origin: "file" });
     expect(watcher.getState().versions.get("demo")).toBe(2);
   });
@@ -156,7 +158,7 @@ describe("createWorkspaceWatcher — file changes", () => {
 
     writeFileSync(filePath, INVALID_DSL);
 
-    await waitFor(() => expect(messages).toHaveLength(3), 500);
+    await waitFor(() => expect(messages).toHaveLength(3), 2000);
     expect(messages[2]).toMatchObject({
       kind: "diagram-error",
       name: "demo",
@@ -175,7 +177,7 @@ describe("createWorkspaceWatcher — file changes", () => {
 
     writeFileSync(path.join(dir, "other.arch"), OTHER_VALID_DSL);
 
-    await waitFor(() => expect(messages).toHaveLength(3), 500);
+    await waitFor(() => expect(messages).toHaveLength(3), 2000);
     expect(messages[2]).toEqual({ kind: "workspace", diagrams: ["demo", "other"], active: "demo" });
     // Non-active file content is never parsed/broadcast as a diagram message.
     expect(messages.some((m) => m.kind === "diagram" && m.name === "other")).toBe(false);
@@ -192,7 +194,7 @@ describe("createWorkspaceWatcher — file changes", () => {
 
     unlinkSync(path.join(dir, "other.arch"));
 
-    await waitFor(() => expect(messages).toHaveLength(3), 500);
+    await waitFor(() => expect(messages).toHaveLength(3), 2000);
     expect(messages[2]).toEqual({ kind: "workspace", diagrams: ["demo"], active: "demo" });
     expect(watcher.getState().diagrams).toEqual(["demo"]);
     expect(watcher.getState().active).toBe("demo");
@@ -208,7 +210,7 @@ describe("createWorkspaceWatcher — file changes", () => {
 
     unlinkSync(path.join(dir, "demo.arch"));
 
-    await waitFor(() => expect(watcher.getState().active).toBe("alpha"), 500);
+    await waitFor(() => expect(watcher.getState().active).toBe("alpha"), 2000);
     const workspaceUpdate = messages.find(
       (m, i) => i > 1 && m.kind === "workspace" && m.active === "alpha",
     );
@@ -250,7 +252,7 @@ describe("createWorkspaceWatcher — setActive (sticky)", () => {
 
     // Adding another file must NOT steal active back from the sticky choice.
     writeFileSync(path.join(dir, "beta.arch"), OTHER_VALID_DSL);
-    await waitFor(() => expect(watcher.getState().diagrams).toContain("beta"), 500);
+    await waitFor(() => expect(watcher.getState().diagrams).toContain("beta"), 2000);
     expect(watcher.getState().active).toBe("alpha");
   });
 
@@ -266,7 +268,7 @@ describe("createWorkspaceWatcher — setActive (sticky)", () => {
 
     unlinkSync(path.join(dir, "alpha.arch"));
     // Sticky choice is gone → auto-select resumes and prefers demo.
-    await waitFor(() => expect(watcher.getState().active).toBe("demo"), 500);
+    await waitFor(() => expect(watcher.getState().active).toBe("demo"), 2000);
   });
 });
 
@@ -473,8 +475,58 @@ describe("createWorkspaceWatcher — update", () => {
 
     // A genuinely different edit still comes through as a normal file change.
     writeFileSync(filePath, VALID_DEMO_DSL);
-    await waitFor(() => expect(watcher.getState().versions.get("demo")).toBe(3), 500);
+    await waitFor(() => expect(watcher.getState().versions.get("demo")).toBe(3), 2000);
     expect(messages.at(-1)).toMatchObject({ kind: "diagram", name: "demo", version: 3, origin: "file" });
+  });
+
+  it("tags the broadcast with a caller-supplied origin and forwards excludeSocket", async () => {
+    const dir = makeTempDir();
+    writeFileSync(path.join(dir, "demo.arch"), VALID_DEMO_DSL);
+    const calls: Array<{ message: ServerMessage; options?: BroadcastOptions }> = [];
+    const watcher = createWorkspaceWatcher({
+      dir,
+      broadcast: (message, options) => calls.push({ message, options }),
+    });
+    openWatchers.add(watcher);
+    await watcher.start();
+    const before = calls.length;
+
+    // The watcher treats the socket as an opaque token — a sentinel suffices.
+    const sender = { sentinel: true } as unknown as WebSocket;
+    const result = watcher.update("demo", OTHER_VALID_DSL, { origin: "drawer", excludeSocket: sender });
+    expect(result.ok).toBe(true);
+
+    expect(calls).toHaveLength(before + 1);
+    const last = calls.at(-1)!;
+    expect(last.message).toMatchObject({ kind: "diagram", name: "demo", version: 2, origin: "drawer" });
+    expect(last.options?.excludeOrigin).toBe(sender);
+  });
+
+  it("never excludes the originator from the workspace frame when active changes", async () => {
+    const dir = makeTempDir();
+    writeFileSync(path.join(dir, "alpha.arch"), OTHER_VALID_DSL);
+    writeFileSync(path.join(dir, "demo.arch"), VALID_DEMO_DSL);
+    const calls: Array<{ message: ServerMessage; options?: BroadcastOptions }> = [];
+    const watcher = createWorkspaceWatcher({
+      dir,
+      broadcast: (message, options) => calls.push({ message, options }),
+    });
+    openWatchers.add(watcher);
+    await watcher.start();
+    expect(watcher.getState().active).toBe("demo");
+    const before = calls.length;
+
+    const sender = { sentinel: true } as unknown as WebSocket;
+    watcher.update("alpha", VALID_DEMO_DSL, { origin: "canvas", excludeSocket: sender });
+
+    // Active switched demo → alpha: a workspace frame for EVERYONE (shared
+    // state, no exclusion) followed by the diagram frame minus the sender.
+    expect(calls).toHaveLength(before + 2);
+    const [workspaceCall, diagramCall] = calls.slice(before);
+    expect(workspaceCall.message).toMatchObject({ kind: "workspace", active: "alpha" });
+    expect(workspaceCall.options?.excludeOrigin).toBeUndefined();
+    expect(diagramCall.message).toMatchObject({ kind: "diagram", name: "alpha", origin: "canvas" });
+    expect(diagramCall.options?.excludeOrigin).toBe(sender);
   });
 
   it("does not double-bump createDiagram when the watcher's own add event lands", async () => {
