@@ -87,6 +87,31 @@ describe("get_dsl_guide", () => {
     // Points Claude at list_icons for icon ids
     expect(text).toContain("list_icons");
   });
+
+  it("documents the get_diagram -> edit -> set_diagram self-correction workflow", async () => {
+    const port = await startMcpServer();
+
+    const text = await callTool(port, "get_dsl_guide");
+
+    // WORKFLOW section names both tools and the read-first / retry loop.
+    expect(text).toMatch(/workflow/i);
+    expect(text).toContain("get_diagram");
+    expect(text).toContain("set_diagram");
+    // Teaches self-correction from the "line X, col Y" error shape set_diagram returns.
+    expect(text).toMatch(/line X, col Y/);
+  });
+
+  it("shows a two-tier nested group and a boundary-crossing edge in the example", async () => {
+    const port = await startMcpServer();
+
+    const text = await callTool(port, "get_dsl_guide");
+
+    // Nested-group example (a group declared inside another group).
+    expect(text).toContain("Data Layer");
+    expect(text).toMatch(/nested inside/i);
+    // Encourages design-intent comments (e.g. a cache TTL).
+    expect(text).toMatch(/cache-aside/);
+  });
 });
 
 describe("list_icons", () => {
