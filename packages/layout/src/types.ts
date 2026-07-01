@@ -23,10 +23,13 @@ export interface Point {
 /**
  * One routed segment of an edge, straight from ELK.
  *
- * Points are in **absolute canvas coordinates**: ELK routes each edge within
- * its container node, and layout normalizes every section by that container's
- * absolute offset so all edge geometry shares one coordinate space (ready for
- * a custom bend-point renderer in T15).
+ * Points are in **absolute canvas coordinates**. elkjs routes each edge
+ * relative to `edge.container` — the lowest common ancestor of its endpoints,
+ * where a group endpoint counts as its own ancestor — and `layoutDiagram`
+ * offsets every section by that container's absolute origin. So all edge
+ * geometry (root-level, intra-group, cross-boundary, and group↔descendant
+ * edges) shares one absolute coordinate space, ready for the bend-point
+ * renderer in T15.
  */
 export interface PositionedEdgeSection {
   /** Where the segment begins. */

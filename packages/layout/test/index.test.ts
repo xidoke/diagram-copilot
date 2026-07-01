@@ -152,6 +152,82 @@ describe("layoutDiagram — architecture fixture", () => {
   });
 });
 
+/**
+ * Absolute bounding box of every node/group, accumulating the parentId chain
+ * (layout keeps box x/y parent-relative). Used to check that an edge's routed
+ * endpoints land on the real, absolute borders of the nodes they connect.
+ */
+function absBoundsById(graph: PositionedGraph) {
+  const boxes = boxesById(graph);
+  const originCache = new Map<string, { x: number; y: number }>();
+  const origin = (id: string): { x: number; y: number } => {
+    const cached = originCache.get(id);
+    if (cached) return cached;
+    const box = boxes.get(id)!;
+    const parent = box.parentId !== undefined ? origin(box.parentId) : { x: 0, y: 0 };
+    const o = { x: parent.x + box.x, y: parent.y + box.y };
+    originCache.set(id, o);
+    return o;
+  };
+  const bounds = new Map<string, { minX: number; minY: number; maxX: number; maxY: number }>();
+  for (const box of [...graph.groups, ...graph.nodes]) {
+    const o = origin(box.id);
+    bounds.set(box.id, { minX: o.x, minY: o.y, maxX: o.x + box.width, maxY: o.y + box.height });
+  }
+  return bounds;
+}
+
+const within = (
+  p: { x: number; y: number },
+  b: { minX: number; minY: number; maxX: number; maxY: number },
+): boolean =>
+  p.x >= b.minX - EPS && p.x <= b.maxX + EPS && p.y >= b.minY - EPS && p.y <= b.maxY + EPS;
+
+describe("layoutDiagram — edge sections in true absolute coords (DGC-53)", () => {
+  // Regression guard for the `edge.container` offset. elkjs reports each edge's
+  // sections relative to its container (the endpoints' LCA); layout must offset
+  // them by that container's absolute origin. If it offset by the node the edge
+  // was declared on (always root → no-op), these intra-/cross-group edges would
+  // arrive container-relative and miss the endpoints' absolute bounds.
+
+  it("anchors an intra-nested-group edge to its endpoints' absolute bounds", async () => {
+    // e4 (api → redis): both leaves sit two tiers deep, inside vpc > private,
+    // so the ELK container is `private` and the offset is its accumulated
+    // (vpc + private) absolute origin.
+    const graph = await layoutDiagram(fixtureDoc("right"));
+    const bounds = absBoundsById(graph);
+    const e4 = graph.edges.find((e) => e.id === "e4")!;
+    const first = e4.sections[0]!;
+    const last = e4.sections[e4.sections.length - 1]!;
+    expect(within(first.startPoint, bounds.get("api")!)).toBe(true);
+    expect(within(last.endPoint, bounds.get("redis")!)).toBe(true);
+  });
+
+  it("anchors a cross-boundary edge to its endpoints' absolute bounds", async () => {
+    // e3 (alb → api): alb is in `public`, api in `private`, so the sections are
+    // reported relative to their LCA `vpc` and must be lifted by vpc's origin.
+    const graph = await layoutDiagram(fixtureDoc("right"));
+    const bounds = absBoundsById(graph);
+    const e3 = graph.edges.find((e) => e.id === "e3")!;
+    const first = e3.sections[0]!;
+    const last = e3.sections[e3.sections.length - 1]!;
+    expect(within(first.startPoint, bounds.get("alb")!)).toBe(true);
+    expect(within(last.endPoint, bounds.get("api")!)).toBe(true);
+  });
+
+  it("keeps a root-level edge anchored to its endpoints' absolute bounds", async () => {
+    // e1 (client → cdn): both at root, container = root, offset is a no-op —
+    // the case that already worked, kept so all three container tiers are covered.
+    const graph = await layoutDiagram(fixtureDoc("right"));
+    const bounds = absBoundsById(graph);
+    const e1 = graph.edges.find((e) => e.id === "e1")!;
+    const first = e1.sections[0]!;
+    const last = e1.sections[e1.sections.length - 1]!;
+    expect(within(first.startPoint, bounds.get("client")!)).toBe(true);
+    expect(within(last.endPoint, bounds.get("cdn")!)).toBe(true);
+  });
+});
+
 function axisSeparation(
   boxes: ReturnType<typeof boxesById>,
   a: string,

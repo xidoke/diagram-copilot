@@ -89,23 +89,41 @@ function buildElkGraph(
   return { graph, groupIds };
 }
 
+/**
+ * elkjs tags every laid-out edge with `container` — the id of the endpoints'
+ * lowest common ancestor, the coordinate frame its `sections` are reported in.
+ * It isn't in elkjs's published types, so we read it through this alias.
+ */
+type LaidOutEdge = ElkExtendedEdge & { container?: string };
+
 /** Map ELK's laid-out graph into the renderer-facing {@link PositionedGraph}. */
 function toPositionedGraph(result: ElkNode, groupIds: Set<string>): PositionedGraph {
   const nodes: PositionedNode[] = [];
   const groups: PositionedGroup[] = [];
-  const edges: PositionedEdge[] = [];
+
+  // Absolute top-left origin of every element, keyed by id (root at 0,0).
+  // elkjs reports each edge's sections relative to `edge.container` (the
+  // endpoints' lowest common ancestor, a group endpoint counting as its own
+  // ancestor). Recording every origin here lets us offset each edge by *its*
+  // container below — not by the node the edge was declared on, which is
+  // always the root and therefore a no-op.
+  const absOrigin = new Map<string, { x: number; y: number }>([
+    [result.id ?? "root", { x: 0, y: 0 }],
+  ]);
+  const elkEdges: LaidOutEdge[] = [];
 
   // Depth-first pre-order: a group is emitted before its descendants, so
   // `groups` ends up parent-before-child (React Flow's ordering requirement).
-  // `absX`/`absY` accumulate ancestor offsets to normalize edge geometry;
-  // node/group x/y stay parent-relative as ELK returns them.
+  // `absX`/`absY` accumulate ancestor offsets to build each element's absolute
+  // origin; node/group x/y stay parent-relative as ELK returns them.
   const walk = (parent: ElkNode, parentId: string | undefined, absX: number, absY: number): void => {
-    for (const edge of parent.edges ?? []) {
-      edges.push(toPositionedEdge(edge as ElkExtendedEdge, absX, absY));
-    }
+    for (const edge of parent.edges ?? []) elkEdges.push(edge as LaidOutEdge);
     for (const child of parent.children ?? []) {
       const x = child.x ?? 0;
       const y = child.y ?? 0;
+      const originX = absX + x;
+      const originY = absY + y;
+      absOrigin.set(child.id, { x: originX, y: originY });
       const box = {
         id: child.id,
         x,
@@ -116,13 +134,23 @@ function toPositionedGraph(result: ElkNode, groupIds: Set<string>): PositionedGr
       };
       if (groupIds.has(child.id)) {
         groups.push(box);
-        walk(child, child.id, absX + x, absY + y);
+        walk(child, child.id, originX, originY);
       } else {
         nodes.push(box);
       }
     }
   };
   walk(result, undefined, 0, 0);
+
+  // Offset each edge's sections by its container's absolute origin, yielding
+  // true absolute geometry for every case (root-level, intra-group, cross-
+  // boundary, and group↔descendant edges). Falls back to the origin when
+  // `container` is missing/unknown (e.g. a root-level edge).
+  const edges: PositionedEdge[] = elkEdges.map((edge) => {
+    const origin =
+      (edge.container !== undefined ? absOrigin.get(edge.container) : undefined) ?? { x: 0, y: 0 };
+    return toPositionedEdge(edge, origin.x, origin.y);
+  });
 
   return {
     nodes,
