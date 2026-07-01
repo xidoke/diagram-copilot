@@ -45,15 +45,42 @@ export function ArchNode({ data }: NodeProps) {
   );
 }
 
+/** Deepest nesting level that gets its own tint; deeper groups reuse it. */
+const MAX_DEPTH_TINT = 3;
+
 /** Group container — dashed outline with an uppercase corner label, subtly accented when colored. */
 export function ArchGroup({ data }: NodeProps) {
-  const { label, color } = data as ArchNodeData;
-  const style = color !== undefined ? ({ "--node-accent": resolveColor(color) } as CSSProperties) : undefined;
-  const className = color !== undefined ? "arch-group arch-group--accent" : "arch-group";
+  const { label, direction, icon, color, depth } = data as ArchNodeData;
+  const pos = HANDLE_POSITIONS[direction] ?? HANDLE_POSITIONS.right;
+  const accent = resolveColor(color);
+  const style = color !== undefined ? ({ "--node-accent": accent } as CSSProperties) : undefined;
+  // Base + depth tint (clamped) + optional accent. Depth 0 tint is a no-op, so
+  // root groups keep the plain `--group-bg`.
+  const depthClass = `arch-group--depth-${Math.min(depth ?? 0, MAX_DEPTH_TINT)}`;
+  const className = [
+    "arch-group",
+    depthClass,
+    ...(color !== undefined ? ["arch-group--accent"] : []),
+  ].join(" ");
 
   return (
     <div className={className} style={style}>
-      <span className="arch-group-label">{label}</span>
+      {/* Hidden handles so edges may terminate on the group itself
+          (`API > VPC`). Positioned by flow direction, like ArchNode. */}
+      <Handle type="target" position={pos.target} className="arch-handle" />
+      <span className="arch-group-label">
+        {icon !== undefined && (
+          <span
+            className="arch-group-chip"
+            style={{ color: accent }}
+            // Icon markup comes from the trusted @diagram-copilot/icons package
+            // (see ArchNode), so injecting it here is safe.
+            dangerouslySetInnerHTML={{ __html: getIcon(icon).svg }}
+          />
+        )}
+        {label}
+      </span>
+      <Handle type="source" position={pos.source} className="arch-handle" />
     </div>
   );
 }
