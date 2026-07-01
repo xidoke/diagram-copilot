@@ -13,7 +13,6 @@
  */
 import type { Node } from "@xyflow/react";
 import type { LayoutOverrides } from "@diagram-copilot/core";
-import { DEFAULT_WS_URL } from "../connection/index.js";
 import { ARCH_GROUP_TYPE } from "./toFlow.js";
 
 /** CSS class marking a node pinned to a manual position (see `App.css`). */
@@ -28,13 +27,17 @@ export const PINNED_CLASS = "arch-node--pinned";
  * dropping the `/ws` path.
  */
 function apiBase(): string {
-  const wsUrl = (import.meta.env.VITE_WS_URL as string | undefined) ?? DEFAULT_WS_URL;
+  const wsUrl = import.meta.env.VITE_WS_URL as string | undefined;
+  // No explicit override → relative URLs: same-origin in production, and the
+  // vite dev proxy forwards `/api/*` to :4747 (a cross-origin absolute URL is
+  // CORS-blocked by the browser — found in T25 e2e).
+  if (!wsUrl) return "";
   try {
     const url = new URL(wsUrl);
     const protocol = url.protocol === "wss:" ? "https:" : "http:";
     return `${protocol}//${url.host}`;
   } catch {
-    return "http://localhost:4747";
+    return "";
   }
 }
 

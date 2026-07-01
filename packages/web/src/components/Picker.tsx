@@ -59,8 +59,10 @@ export function groupDiagrams(names: string[]): DiagramGroup[] {
   }));
 }
 
-/** REST endpoint for activating/creating a diagram — same host:port the WS default points at. */
-const API_OPEN_URL = "http://localhost:4747/api/open";
+/** REST endpoint for activating/creating a diagram. Relative: same-origin in
+ *  production, forwarded to :4747 by the vite dev proxy (an absolute
+ *  cross-origin URL gets CORS-blocked — found in T25 e2e). */
+const API_OPEN_URL = "/api/open";
 
 /** Shape returned by `POST /api/open` — structurally mirrors the server's `OpenResult`. */
 interface OpenApiResult {

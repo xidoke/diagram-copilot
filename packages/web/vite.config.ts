@@ -3,6 +3,17 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
+  server: {
+    // Dev-mode: the web app runs on :4700 while the diagram-copilot server
+    // owns :4747 — same-origin fetches (`/api/*`, `/export`) must be proxied
+    // or the browser blocks them with CORS (found in T25 e2e). In production
+    // the server serves the bundle itself, so everything is same-origin and
+    // the proxy is never involved.
+    proxy: {
+      "/api": "http://localhost:4747",
+      "/export": "http://localhost:4747",
+    },
+  },
   resolve: {
     alias: [
       // `monaco-editor`'s package.json only has a "module" field, no
