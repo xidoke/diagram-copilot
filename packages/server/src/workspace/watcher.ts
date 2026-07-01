@@ -16,6 +16,8 @@ import {
   diagramNameFromFile,
   isArchFile,
   parseDsl,
+  type DiagramDoc,
+  type DiagramMessage,
   type ServerMessage,
   type WorkspaceMessage,
 } from "@diagram-copilot/core";
@@ -74,17 +76,56 @@ export interface CreateDiagramResult {
   error?: string;
 }
 
+/** Outcome of {@link WorkspaceOps.read}. */
+export interface ReadResult {
+  /** `true` when the diagram exists and its DSL was read. */
+  ok: boolean;
+  /** Raw DSL source on disk (only present when `ok`). */
+  dsl?: string;
+  /** Last accepted version, or `0` if never parsed successfully / on failure. */
+  version: number;
+  /** Human-readable reason when `ok` is `false` (unknown/invalid name, read error). */
+  error?: string;
+}
+
+/** Outcome of {@link WorkspaceOps.update}. */
+export interface UpdateResult {
+  /** `true` when the DSL was written and broadcast. */
+  ok: boolean;
+  /** Normalized diagram name (or the raw input when validation failed). */
+  name: string;
+  /** New version after the accepted write (unchanged/last version on failure). */
+  version: number;
+  /** Parsed document that was written (only present when `ok`). */
+  doc?: DiagramDoc;
+  /** Human-readable reason when `ok` is `false` (invalid name, DSL failed to parse). */
+  error?: string;
+}
+
 /**
- * Narrow, read/activate-only view of the workspace handed to MCP tools
- * (`list_diagrams`, `open_diagram`, and — reused by T20 — future workspace
- * tools). Deliberately excludes the watcher's lifecycle (`start`/`stop`) and
- * raw state so tool code cannot drive the filesystem watcher directly.
+ * Narrow, read/activate/write view of the workspace handed to MCP tools
+ * (`list_diagrams`, `open_diagram`, `get_diagram`, `set_diagram`).
+ * Deliberately excludes the watcher's lifecycle (`start`/`stop`) and raw state
+ * so tool code cannot drive the filesystem watcher directly.
  */
 export interface WorkspaceOps {
   /** All diagrams, sorted by name, with their version and active flag. */
   list(): DiagramListing[];
   /** Activate `name`, creating it from a template if it does not exist yet. */
   open(name: string): OpenResult;
+  /**
+   * Read a diagram's raw DSL from disk without changing the active diagram.
+   * Fails (`ok: false`) for an unknown/invalid name or an unreadable file.
+   */
+  read(name: string): ReadResult;
+  /**
+   * Write already-validated `dsl` to `name`, bump its version, make it active,
+   * and broadcast a `diagram` frame with origin `mcp` immediately (no waiting
+   * on the debounced fs watcher). Callers MUST have validated `dsl` via
+   * `parseDsl`; an invalid `dsl` is refused without writing. The file must
+   * already exist — create a new diagram with {@link open} first.
+   */
+  update(name: string, dsl: string): UpdateResult;
 }
 
 export interface WorkspaceWatcher extends WorkspaceOps {
@@ -186,6 +227,13 @@ export function createWorkspaceWatcher(options: WorkspaceWatcherOptions): Worksp
 
   let watcher: FSWatcher | undefined;
   const debounceTimers = new Map<string, NodeJS.Timeout>();
+  // Raw content last broadcast per diagram (whether via the fs watcher, a
+  // `createDiagram` seed, or an MCP `update`). Used to suppress the watcher's
+  // own echo: when a debounced change/add arrives with content identical to
+  // what we last broadcast, it is our own write coming back — we skip it so it
+  // neither bumps the version nor re-broadcasts. This fixes both the MCP
+  // `update` double-fire and the `createDiagram` double-bump (its later "add").
+  const lastBroadcastContent = new Map<string, string>();
 
   /**
    * Which diagram should be active right now: the sticky choice if it still
@@ -222,6 +270,10 @@ export function createWorkspaceWatcher(options: WorkspaceWatcherOptions): Worksp
       return;
     }
 
+    // Remember what we are about to broadcast so a subsequent fs echo of this
+    // same content (our own or a redundant external touch) can be suppressed.
+    lastBroadcastContent.set(name, dsl);
+
     const result = parseDsl(dsl);
     if (result.ok) {
       const nextVersion = (versions.get(name) ?? 0) + 1;
@@ -252,11 +304,32 @@ export function createWorkspaceWatcher(options: WorkspaceWatcherOptions): Worksp
 
   /** Apply one debounced fs event: update workspace/active state, broadcast as needed. */
   function handleFileEvent(name: string, kind: FileEventKind): void {
+    // Suppress our own echo: a change/add whose current on-disk content matches
+    // what we last broadcast for this name is a write we already applied (an
+    // MCP `update`, a `createDiagram` seed, or a no-op external re-save). Skip
+    // it entirely — no version bump, no re-broadcast. The name is already in
+    // `diagrams` and active in those cases, so there is no list change to miss.
+    if (kind !== "unlink") {
+      const filePath = path.join(root, `${name}${ARCH_EXT}`);
+      let current: string | undefined;
+      try {
+        current = readFileSync(filePath, "utf8");
+      } catch {
+        current = undefined;
+      }
+      if (current !== undefined && lastBroadcastContent.get(name) === current) {
+        return;
+      }
+    }
+
     const prevDiagrams = new Set(diagrams);
     const prevActive = active;
 
     if (kind === "unlink") {
       diagrams.delete(name);
+      // Drop the remembered content so a later recreation with identical bytes
+      // is not mistaken for our own echo and wrongly suppressed.
+      lastBroadcastContent.delete(name);
     } else {
       diagrams.add(name);
     }
@@ -353,6 +426,69 @@ export function createWorkspaceWatcher(options: WorkspaceWatcherOptions): Worksp
     return { ok: true, created: true, name: result.name, version: versions.get(result.name) ?? 0 };
   }
 
+  function read(name: string): ReadResult {
+    const validated = validateDiagramName(name);
+    if (!validated.ok) return { ok: false, version: 0, error: validated.error };
+    const stem = validated.name;
+    if (!diagrams.has(stem)) {
+      return { ok: false, version: 0, error: `Diagram "${stem}" does not exist.` };
+    }
+    const filePath = path.join(root, `${stem}${ARCH_EXT}`);
+    try {
+      const dsl = readFileSync(filePath, "utf8");
+      return { ok: true, dsl, version: versions.get(stem) ?? 0 };
+    } catch {
+      return { ok: false, version: versions.get(stem) ?? 0, error: `Could not read diagram "${stem}".` };
+    }
+  }
+
+  function update(name: string, dsl: string): UpdateResult {
+    const validated = validateDiagramName(name);
+    if (!validated.ok) {
+      return { ok: false, name, version: versions.get(name) ?? 0, error: validated.error };
+    }
+    const stem = validated.name;
+    // Defensive re-parse: callers pre-validate, but never let invalid DSL reach
+    // disk. Also yields the `doc` we broadcast and hand back for the receipt.
+    const result = parseDsl(dsl);
+    if (!result.ok) {
+      return {
+        ok: false,
+        name: stem,
+        version: versions.get(stem) ?? 0,
+        error: "DSL failed to parse — validate with parseDsl before calling update.",
+      };
+    }
+
+    const filePath = path.join(root, `${stem}${ARCH_EXT}`);
+    writeFileSync(filePath, dsl);
+    diagrams.add(stem);
+    const nextVersion = (versions.get(stem) ?? 0) + 1;
+    versions.set(stem, nextVersion);
+    // Record before broadcasting so the debounced fs echo of this very write is
+    // recognized and suppressed (no double bump, no duplicate frame).
+    lastBroadcastContent.set(stem, dsl);
+
+    // An MCP write surfaces its diagram on the canvas: make it sticky-active and
+    // push a workspace update only when that actually changes the active pick.
+    const activeChanged = active !== stem;
+    stickyActive = stem;
+    active = resolveActive();
+    if (activeChanged) broadcastWorkspace();
+
+    const message: DiagramMessage = {
+      kind: "diagram",
+      name: stem,
+      version: nextVersion,
+      origin: "mcp",
+      dsl,
+      doc: result.doc,
+    };
+    broadcast(message);
+
+    return { ok: true, name: stem, version: nextVersion, doc: result.doc };
+  }
+
   return {
     async start() {
       mkdirSync(root, { recursive: true });
@@ -398,6 +534,8 @@ export function createWorkspaceWatcher(options: WorkspaceWatcherOptions): Worksp
     createDiagram,
     list,
     open,
+    read,
+    update,
   };
 }
 

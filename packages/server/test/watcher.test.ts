@@ -377,6 +377,123 @@ describe("createWorkspaceWatcher — list / open", () => {
   });
 });
 
+describe("createWorkspaceWatcher — read", () => {
+  it("returns the on-disk DSL and version for an existing diagram", async () => {
+    const dir = makeTempDir();
+    writeFileSync(path.join(dir, "demo.arch"), VALID_DEMO_DSL);
+    const { broadcast } = collector();
+    const watcher = await watch(dir, broadcast);
+
+    expect(watcher.read("demo")).toEqual({ ok: true, dsl: VALID_DEMO_DSL, version: 1 });
+  });
+
+  it("fails for a diagram that does not exist", async () => {
+    const dir = makeTempDir();
+    const { broadcast } = collector();
+    const watcher = await watch(dir, broadcast);
+
+    const result = watcher.read("missing");
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("does not exist");
+  });
+
+  it("rejects a path-traversal name", async () => {
+    const dir = makeTempDir();
+    const { broadcast } = collector();
+    const watcher = await watch(dir, broadcast);
+
+    const result = watcher.read("../escape");
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("path separators");
+  });
+});
+
+describe("createWorkspaceWatcher — update", () => {
+  it("writes the DSL, bumps the version, and broadcasts a diagram frame with origin mcp", async () => {
+    const dir = makeTempDir();
+    const filePath = path.join(dir, "demo.arch");
+    writeFileSync(filePath, VALID_DEMO_DSL);
+    const { messages, broadcast } = collector();
+    const watcher = await watch(dir, broadcast);
+    const before = messages.length;
+
+    const result = watcher.update("demo", OTHER_VALID_DSL);
+    expect(result).toMatchObject({ ok: true, name: "demo", version: 2 });
+    expect(result.doc?.nodes.map((n) => n.id)).toEqual(["Alpha", "Beta"]);
+
+    // Exactly one new frame (the mcp diagram); demo was already active so no
+    // extra workspace message.
+    expect(messages).toHaveLength(before + 1);
+    expect(messages.at(-1)).toMatchObject({
+      kind: "diagram",
+      name: "demo",
+      version: 2,
+      origin: "mcp",
+      dsl: OTHER_VALID_DSL,
+    });
+    // File on disk reflects the write, and the version bumped.
+    expect(readFileSync(filePath, "utf8")).toBe(OTHER_VALID_DSL);
+    expect(watcher.getState().versions.get("demo")).toBe(2);
+  });
+
+  it("refuses to write invalid DSL and leaves the file + version untouched", async () => {
+    const dir = makeTempDir();
+    const filePath = path.join(dir, "demo.arch");
+    writeFileSync(filePath, VALID_DEMO_DSL);
+    const { messages, broadcast } = collector();
+    const watcher = await watch(dir, broadcast);
+    const before = messages.length;
+
+    const result = watcher.update("demo", INVALID_DSL);
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("parse");
+    expect(readFileSync(filePath, "utf8")).toBe(VALID_DEMO_DSL);
+    expect(watcher.getState().versions.get("demo")).toBe(1);
+    expect(messages).toHaveLength(before);
+  });
+
+  it("suppresses the fs echo of its own write (no double-bump, no duplicate frame)", async () => {
+    const dir = makeTempDir();
+    const filePath = path.join(dir, "demo.arch");
+    writeFileSync(filePath, VALID_DEMO_DSL);
+    const { messages, broadcast } = collector();
+    const watcher = await watch(dir, broadcast);
+
+    watcher.update("demo", OTHER_VALID_DSL);
+    const afterUpdate = messages.length;
+
+    // update()'s own writeFileSync fires a chokidar "change"; a redundant
+    // re-save of the identical content fires another. Both echo our last
+    // broadcast, so neither should bump the version or add a frame.
+    writeFileSync(filePath, OTHER_VALID_DSL);
+    await new Promise((r) => setTimeout(r, 400));
+
+    expect(messages).toHaveLength(afterUpdate);
+    expect(watcher.getState().versions.get("demo")).toBe(2);
+
+    // A genuinely different edit still comes through as a normal file change.
+    writeFileSync(filePath, VALID_DEMO_DSL);
+    await waitFor(() => expect(watcher.getState().versions.get("demo")).toBe(3), 500);
+    expect(messages.at(-1)).toMatchObject({ kind: "diagram", name: "demo", version: 3, origin: "file" });
+  });
+
+  it("does not double-bump createDiagram when the watcher's own add event lands", async () => {
+    const dir = makeTempDir();
+    const { messages, broadcast } = collector();
+    const watcher = await watch(dir, broadcast);
+
+    watcher.createDiagram("fresh");
+    expect(watcher.getState().versions.get("fresh")).toBe(1);
+    const freshFrames = () => messages.filter((m) => m.kind === "diagram" && m.name === "fresh");
+    expect(freshFrames()).toHaveLength(1);
+
+    // Give the debounced "add" echo time to fire; it must be suppressed.
+    await new Promise((r) => setTimeout(r, 400));
+    expect(watcher.getState().versions.get("fresh")).toBe(1);
+    expect(freshFrames()).toHaveLength(1);
+  });
+});
+
 describe("buildWelcomeMessages", () => {
   it("returns only a workspace message when there is no active diagram", () => {
     const dir = makeTempDir();
