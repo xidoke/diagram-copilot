@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildExportFilename,
+  capturePngDataUrl,
   computeExportRect,
   copyPngToClipboard,
   EXPORT_PADDING,
@@ -8,6 +9,7 @@ import {
   exportPng,
   exportSvg,
   MAX_EXPORT_DIMENSION,
+  saveToWorkspaceExports,
 } from "../../src/render/export.js";
 
 /**
@@ -104,5 +106,14 @@ describe("export.ts (smoke)", () => {
     expect(typeof exportPng).toBe("function");
     expect(typeof exportSvg).toBe("function");
     expect(typeof copyPngToClipboard).toBe("function");
+  });
+
+  // capturePngDataUrl/saveToWorkspaceExports (T29 / DGC-49) share the same
+  // DOM-dependent capture pipeline (prepareCapture → .react-flow__viewport),
+  // so — like exportPng/exportSvg/copyPngToClipboard above — they can only
+  // be smoke-tested for shape here, not actually invoked without jsdom.
+  it("exposes capturePngDataUrl, saveToWorkspaceExports as callable functions", () => {
+    expect(typeof capturePngDataUrl).toBe("function");
+    expect(typeof saveToWorkspaceExports).toBe("function");
   });
 });

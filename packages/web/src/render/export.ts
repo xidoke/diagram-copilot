@@ -221,12 +221,22 @@ async function captureWithPatches<T>(viewportEl: HTMLElement, capture: () => Pro
 }
 
 /**
+ * Rasterize the diagram to a PNG data URL — no download. Split out of
+ * `exportPng` (T29 / DGC-49) so the "Save to workspace exports" action can
+ * reuse the exact same capture pipeline (bbox → rect → edge patches → PNG)
+ * without triggering a browser download as a side effect.
+ */
+export async function capturePngDataUrl(bounds: Rect, opts: ExportPngOptions = {}): Promise<string> {
+  const { viewportEl, options } = prepareCapture(bounds, opts);
+  return captureWithPatches(viewportEl, () => toPng(viewportEl, options));
+}
+
+/**
  * Rasterize the diagram to a PNG and trigger a browser download. `bounds` is
  * the node bbox (e.g. from `useReactFlow().getNodesBounds(getNodes())`).
  */
 export async function exportPng(bounds: Rect, filename: string, opts: ExportPngOptions = {}): Promise<void> {
-  const { viewportEl, options } = prepareCapture(bounds, opts);
-  const dataUrl = await captureWithPatches(viewportEl, () => toPng(viewportEl, options));
+  const dataUrl = await capturePngDataUrl(bounds, opts);
   downloadDataUrl(dataUrl, filename);
 }
 
@@ -272,6 +282,46 @@ export async function copyPngToClipboard(bounds: Rect, opts: ExportPngOptions = 
     }
     await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
     return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+export interface SaveToExportsResult {
+  ok: boolean;
+  /** Absolute path written on the server, set only when `ok`. */
+  path?: string;
+  /** Human-readable reason, set only when `ok` is false. */
+  error?: string;
+}
+
+/**
+ * Rasterize the diagram to a PNG and hand it to the server's `POST /export`
+ * endpoint (T29 / DGC-49), which writes it under `--export-dir` on disk —
+ * unlike `exportPng`/`exportSvg`/`copyPngToClipboard`, this is the one export
+ * action that leaves the browser. Same never-throw contract as
+ * `copyPngToClipboard`: network/server failures come back as a soft
+ * `{ ok: false, error }` for the caller to toast instead of an uncaught
+ * rejection.
+ */
+export async function saveToWorkspaceExports(
+  bounds: Rect,
+  name: string,
+  version: number,
+  opts: ExportPngOptions = {},
+): Promise<SaveToExportsResult> {
+  try {
+    const dataUrl = await capturePngDataUrl(bounds, opts);
+    const response = await fetch("/export", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name, version, format: "png", dataUrl }),
+    });
+    const result = (await response.json()) as SaveToExportsResult;
+    if (!response.ok || !result.ok) {
+      return { ok: false, error: result.error ?? `Save failed (HTTP ${response.status})` };
+    }
+    return result;
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }

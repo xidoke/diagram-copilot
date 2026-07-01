@@ -62,6 +62,13 @@ export interface CreateServerOptions {
    * tests, stay inert).
    */
   onClientUpdate?: (message: UpdateMessage, sender: WebSocket) => void;
+  /**
+   * Absolute path `POST /export` (T29 / DGC-49) writes saved diagram images
+   * under. Omitted → the route is inert (falls through to the static
+   * pipeline / 405), matching the "opt-in wiring" pattern used by
+   * `mcpHandler`/`onClientUpdate` for tests that don't need it.
+   */
+  exportDir?: string;
 }
 
 export interface BroadcastOptions {
@@ -99,7 +106,7 @@ export interface ServerHandle {
  */
 export function createServer(options: CreateServerOptions): ServerHandle {
   const httpServer = http.createServer(
-    createRequestHandler(options.staticDir, options.mcpHandler),
+    createRequestHandler(options.staticDir, options.mcpHandler, options.exportDir),
   );
   const clients = new Set<WebSocket>();
 

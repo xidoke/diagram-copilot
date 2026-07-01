@@ -9,6 +9,7 @@
 import { createReadStream, statSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
+import { EXPORT_PATH, handleExportRequest } from "./export/save.js";
 
 /**
  * Route for the MCP Streamable HTTP endpoint (Claude Code). Kept here so the
@@ -119,16 +120,26 @@ function sendFile(res: ServerResponse, method: string, filePath: string, size: n
  * When `mcpHandler` is provided, requests to {@link MCP_PATH} (any method —
  * the handler owns its own method policy) are forwarded to it instead of
  * the static pipeline.
+ *
+ * When `exportDir` is provided, `POST` {@link EXPORT_PATH} is forwarded to
+ * `handleExportRequest` (see `export/save.ts`), which owns body reading,
+ * validation, and the filesystem write.
  */
 export function createRequestHandler(
   staticDir?: string,
   mcpHandler?: (req: IncomingMessage, res: ServerResponse) => Promise<void>,
+  exportDir?: string,
 ): (req: IncomingMessage, res: ServerResponse) => void {
   return (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
 
     if (mcpHandler && url.pathname === MCP_PATH) {
       void mcpHandler(req, res);
+      return;
+    }
+
+    if (exportDir && req.method === "POST" && url.pathname === EXPORT_PATH) {
+      void handleExportRequest(req, res, exportDir);
       return;
     }
 
