@@ -16,6 +16,7 @@ import {
   type WorkspaceMessage,
 } from "@diagram-copilot/core";
 import { createRequestHandler, type OpenRequestHandler } from "./http.js";
+import type { LayoutApiHandler } from "./layout-overrides.js";
 import type { McpRequestHandler } from "./mcp/handler.js";
 
 /** WebSocket upgrade path. Everything else on the port is HTTP. */
@@ -52,6 +53,13 @@ export interface CreateServerOptions {
    * through to the static pipeline (servers without MCP, e.g. most tests).
    */
   mcpHandler?: McpRequestHandler;
+  /**
+   * Handler for the layout-override sidecar API (`/api/layout/:name`), built
+   * with `createLayoutApiHandler` from `layout-overrides.ts`. Omitted → the
+   * route falls through to the static pipeline (servers without a workspace,
+   * e.g. most tests). Same mutable-wiring pattern as {@link mcpHandler}.
+   */
+  apiHandler?: LayoutApiHandler;
   /**
    * Handler for a schema-valid `update` frame from a connected client,
    * receiving the parsed message and the sending socket (so the workspace
@@ -112,7 +120,7 @@ export interface ServerHandle {
  */
 export function createServer(options: CreateServerOptions): ServerHandle {
   const httpServer = http.createServer(
-    createRequestHandler(options.staticDir, options.mcpHandler, options.exportDir, options.openHandler),
+    createRequestHandler(options.staticDir, options.mcpHandler, options.exportDir, options.openHandler, options.apiHandler),
   );
   const clients = new Set<WebSocket>();
 

@@ -87,7 +87,9 @@ export function toFlow(doc: DiagramDoc, graph: PositionedGraph): { nodes: Node[]
       } satisfies ArchNodeData,
       style: { width: n.width, height: n.height },
       ...(n.parentId ? { parentId: n.parentId, extent: "parent" as const } : {}),
-      draggable: false,
+      // Leaves are draggable so users can nudge positions; the drag is persisted
+      // as a layout override (T30). Groups stay non-draggable (see above).
+      draggable: true,
     });
   }
 

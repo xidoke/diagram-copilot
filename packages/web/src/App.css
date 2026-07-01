@@ -292,6 +292,20 @@ body {
   opacity: 0;
 }
 
+/* Pinned marker (T30): a small accent dot in the corner of any node whose
+   position was manually dragged (an override sidecar entry). */
+.react-flow__node.arch-node--pinned::after {
+  content: "";
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: var(--node-glow);
+}
+
 .arch-group {
   width: 100%;
   height: 100%;

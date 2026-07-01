@@ -11,6 +11,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import { EXPORT_PATH, handleExportRequest } from "./export/save.js";
 import type { WorkspaceOps } from "./workspace/watcher.js";
+import { LAYOUT_API_PREFIX, type LayoutApiHandler } from "./layout-overrides.js";
 
 /**
  * Route for the MCP Streamable HTTP endpoint (Claude Code). Kept here so the
@@ -238,6 +239,7 @@ export function createRequestHandler(
   mcpHandler?: (req: IncomingMessage, res: ServerResponse) => Promise<void>,
   exportDir?: string,
   openHandler?: OpenRequestHandler,
+  apiHandler?: LayoutApiHandler,
 ): (req: IncomingMessage, res: ServerResponse) => void {
   return (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
@@ -254,6 +256,13 @@ export function createRequestHandler(
 
     if (openHandler && url.pathname === API_OPEN_PATH) {
       void openHandler(req, res);
+      return;
+    }
+
+    // Layout-override sidecar API (`/api/layout/:name`, GET/PUT/DELETE). Placed
+    // before the GET/HEAD-only guard below so its PUT/DELETE verbs reach it.
+    if (apiHandler && url.pathname.startsWith(LAYOUT_API_PREFIX)) {
+      void apiHandler(req, res);
       return;
     }
 

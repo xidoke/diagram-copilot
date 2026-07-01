@@ -32,9 +32,14 @@ const DIRECTION_META: Record<Direction, { icon: string; title: string }> = {
 export interface ToolbarProps {
   prefs: LayoutPrefs;
   onChange: (prefs: LayoutPrefs) => void;
+  /**
+   * Clear all manually dragged positions for the active diagram (T30). Omitted
+   * → the reset button is hidden (e.g. before any diagram is loaded).
+   */
+  onResetLayout?: () => void;
 }
 
-export function Toolbar({ prefs, onChange }: ToolbarProps) {
+export function Toolbar({ prefs, onChange, onResetLayout }: ToolbarProps) {
   return (
     <div className="toolbar">
       <div className="toolbar-group" role="group" aria-label="Spacing">
@@ -54,6 +59,17 @@ export function Toolbar({ prefs, onChange }: ToolbarProps) {
             </button>
           );
         })}
+        {onResetLayout && (
+          <button
+            type="button"
+            title="Reset layout: clear manually dragged positions"
+            aria-label="Reset layout"
+            className="toolbar-btn"
+            onClick={onResetLayout}
+          >
+            ⟲
+          </button>
+        )}
       </div>
       <div className="toolbar-group" role="group" aria-label="Direction">
         {DIRECTION_ORDER.map((direction) => {

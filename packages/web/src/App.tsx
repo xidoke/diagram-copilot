@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  applyNodeChanges,
   Background,
   BackgroundVariant,
   Controls,
@@ -8,10 +9,12 @@ import {
   useReactFlow,
   type Edge,
   type Node,
+  type NodeChange,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import "./tokens.css";
 import "./App.css";
+import type { LayoutOverrides } from "@diagram-copilot/core";
 import { layoutDiagram } from "@diagram-copilot/layout";
 import { EmptyState, shouldShowEmptyState } from "./components/EmptyState.js";
 import { ExportMenu } from "./components/ExportMenu.js";
@@ -24,8 +27,12 @@ import { applyPrefs, loadLayoutPrefs, saveLayoutPrefs, type LayoutPrefs } from "
 import { ArchGroup, ArchNode } from "./render/ArchNode.js";
 import { ELK_EDGE_TYPE, ElkEdge, ElkEdgeMarkerDefs } from "./render/ElkEdge.js";
 import { ARCH_GROUP_TYPE, ARCH_NODE_TYPE, toFlow } from "./render/toFlow.js";
+import { applyOverrides, deleteOverrides, fetchOverrides, putOverrides } from "./render/overrides.js";
 
 export const APP_TITLE = "diagram-copilot";
+
+/** Debounce window before a dragged position is persisted via PUT (T30). */
+const LAYOUT_SAVE_DEBOUNCE_MS = 300;
 
 /** Debounce window before a fitView fires, so a burst of diagram messages
  *  (e.g. fast-typed edits) collapses into one fit instead of racing. */
@@ -40,8 +47,22 @@ const edgeTypes = { [ELK_EDGE_TYPE]: ElkEdge };
 
 function DiagramCanvas() {
   const { status, lastDiagram, lastError, workspace, send } = useDiagramConnection();
+  // `base` is the pure ELK auto-layout; `flow` is what React Flow renders =
+  // base with saved manual overrides folded in (and any in-progress drag). The
+  // split keeps re-layout (ELK) off the drag/override hot path (T30).
+  const [base, setBase] = useState<{ nodes: Node[]; edges: Edge[] }>({ nodes: [], edges: [] });
   const [flow, setFlow] = useState<{ nodes: Node[]; edges: Edge[] }>({ nodes: [], edges: [] });
+  // Manual position overrides for the active diagram. Mirrored into a ref so the
+  // drag handler can build the next record without re-subscribing every render.
+  const [overrides, setOverridesState] = useState<LayoutOverrides>({});
+  const overridesRef = useRef<LayoutOverrides>({});
+  const setOverrides = useCallback((next: LayoutOverrides) => {
+    overridesRef.current = next;
+    setOverridesState(next);
+  }, []);
+  const saveTimerRef = useRef<number | null>(null);
   const [prefs, setPrefs] = useState<LayoutPrefs>(() => loadLayoutPrefs());
+  const diagramName = lastDiagram?.name ?? null;
   const [drawerOpen, setDrawerOpen] = useState(false);
   const toggleDrawer = useCallback(() => setDrawerOpen((o) => !o), []);
   // Bottom-right "⋯ layout" chip — on only while a layout pass is running
@@ -66,7 +87,7 @@ function DiagramCanvas() {
     layoutDiagram(doc, options)
       .then((graph) => {
         if (stale) return;
-        setFlow(toFlow(doc, graph));
+        setBase(toFlow(doc, graph));
       })
       .catch((err) => console.error("layout failed", err))
       .finally(() => {
@@ -80,6 +101,78 @@ function DiagramCanvas() {
     };
   }, [lastDiagram, prefs]);
 
+  // Fold saved overrides onto the freshly auto-laid-out base. Runs on a
+  // re-layout (`base`) and whenever `overrides` change (fetch / drag / reset) —
+  // never re-running ELK, which the layout effect above owns.
+  useEffect(() => {
+    setFlow({ nodes: applyOverrides(base.nodes, overrides), edges: base.edges });
+  }, [base, overrides]);
+
+  // Load the manual overrides for whichever diagram just became active. Cleared
+  // first so diagram A's pins never briefly apply to diagram B.
+  useEffect(() => {
+    if (!diagramName) return;
+    setOverrides({});
+    const controller = new AbortController();
+    let cancelled = false;
+    fetchOverrides(diagramName, controller.signal)
+      .then((loaded) => {
+        if (!cancelled) setOverrides(loaded);
+      })
+      .catch((err) => {
+        if (!cancelled && (err as Error).name !== "AbortError") {
+          console.error("load layout overrides failed", err);
+        }
+      });
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [diagramName, setOverrides]);
+
+  // React Flow drag/selection changes → keep the rendered nodes in sync so a
+  // leaf follows the cursor while dragging (persistence happens on drag stop).
+  const onNodesChange = useCallback((changes: NodeChange[]) => {
+    setFlow((f) => ({ ...f, nodes: applyNodeChanges(changes, f.nodes) }));
+  }, []);
+
+  const scheduleSave = useCallback((name: string, next: LayoutOverrides) => {
+    if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = window.setTimeout(() => {
+      saveTimerRef.current = null;
+      putOverrides(name, next).catch((err) => console.error("save layout overrides failed", err));
+    }, LAYOUT_SAVE_DEBOUNCE_MS);
+  }, []);
+
+  // Drop of a dragged leaf: record its position (React Flow reports it in the
+  // node's own frame — parent-relative for children, see overrides.ts) and
+  // persist the whole record, debounced.
+  const handleNodeDragStop = useCallback(
+    (node: Node) => {
+      if (!diagramName) return;
+      const next: LayoutOverrides = {
+        ...overridesRef.current,
+        [node.id]: { x: node.position.x, y: node.position.y },
+      };
+      setOverrides(next);
+      scheduleSave(diagramName, next);
+    },
+    [diagramName, setOverrides, scheduleSave],
+  );
+
+  // "Reset layout": clear pins locally and delete the sidecar; the derive
+  // effect then restores the pure auto-layout positions.
+  const handleResetLayout = useCallback(() => {
+    if (saveTimerRef.current !== null) {
+      window.clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    setOverrides({});
+    if (diagramName) {
+      deleteOverrides(diagramName).catch((err) => console.error("reset layout failed", err));
+    }
+  }, [diagramName, setOverrides]);
+
   // Robust fitView: a diagram message can arrive in bursts (fast edits), and
   // React Flow needs the new nodes actually painted before it can measure
   // their bbox. So: debounce 100ms to collapse a burst into one fit, then
@@ -91,7 +184,7 @@ function DiagramCanvas() {
   // real complexity for a marginal UX gain (see DGC-36 notes).
   const prevDiagramNameRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!flow.nodes.length) return;
+    if (!base.nodes.length) return;
     const isNewDiagram = lastDiagram?.name !== prevDiagramNameRef.current;
     prevDiagramNameRef.current = lastDiagram?.name ?? null;
 
@@ -110,7 +203,7 @@ function DiagramCanvas() {
       cancelAnimationFrame(raf1);
       cancelAnimationFrame(raf2);
     };
-  }, [flow, lastDiagram, fitView]);
+  }, [base, lastDiagram, fitView]);
 
   // Keep rendering the last good state; show the banner only while the error
   // is current — a diagram-error carries the version of the last ACCEPTED dsl,
@@ -124,7 +217,11 @@ function DiagramCanvas() {
   return (
     <div className="app-shell">
       {lastDiagram && <Picker workspace={workspace} name={lastDiagram.name} version={lastDiagram.version} />}
-      <Toolbar prefs={prefs} onChange={setPrefs} />
+      <Toolbar
+        prefs={prefs}
+        onChange={setPrefs}
+        onResetLayout={diagramName ? handleResetLayout : undefined}
+      />
       <ExportMenu name={lastDiagram?.name ?? "diagram"} version={lastDiagram?.version ?? 0} />
       {showError && lastError && (
         <div className="error-banner">
@@ -139,6 +236,8 @@ function DiagramCanvas() {
       <ReactFlow
         nodes={flow.nodes}
         edges={flow.edges}
+        onNodesChange={onNodesChange}
+        onNodeDragStop={(_, node) => handleNodeDragStop(node)}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         proOptions={{ hideAttribution: true }}

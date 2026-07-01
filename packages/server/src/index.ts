@@ -17,6 +17,7 @@ import type { ServerMessage } from "@diagram-copilot/core";
 import { createServer, WELCOME_WORKSPACE, WS_PATH } from "./server.js";
 import { createClientUpdateHandler } from "./client-updates.js";
 import { MCP_PATH, createOpenHandler } from "./http.js";
+import { createLayoutApiHandler } from "./layout-overrides.js";
 import { createMcpHandler, type McpInfo } from "./mcp/handler.js";
 import { buildWelcomeMessages, createWorkspaceWatcher, type WorkspaceWatcher } from "./workspace/watcher.js";
 
@@ -132,6 +133,9 @@ async function main(): Promise<void> {
     mcpHandler: createMcpHandler({ getInfo: getMcpInfo, getWorkspace: () => watcher ?? null }),
     // `POST /api/open` (T36 / DGC-57) — diagram picker's open/create action.
     openHandler: createOpenHandler(() => watcher ?? null),
+    // Layout-override sidecar API — reads/writes `<name>.layout.json` next to
+    // each diagram in the workspace the CLI just resolved.
+    apiHandler: createLayoutApiHandler(options.workspace),
     // Client (drawer/canvas) update frames → workspace writes with origin
     // routing + echo exclusion + baseVersion conflict handling (T21). Same
     // mutable-watcher-ref pattern: updates arriving before the watcher exists
