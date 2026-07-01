@@ -110,6 +110,37 @@ body {
   letter-spacing: 0.03em;
 }
 
+/* Undo button (T31) — bottom-left corner, the one free spot (info top-left,
+   toolbar/export top-right, status bottom-center, layout-chip bottom-right).
+   ⌘Z triggers the same action; see UndoButton.tsx. */
+.undo-btn {
+  position: fixed;
+  bottom: 16px;
+  left: 10px;
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel-translucent);
+  backdrop-filter: blur(6px);
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+.undo-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.undo-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 /* Floating export menu — top-right, 8px below the toolbar (10px top + ~36px
    toolbar height + 8px gap). Own floating chrome (not part of Toolbar.tsx). */
 .export-menu {

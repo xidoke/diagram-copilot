@@ -62,6 +62,12 @@ export interface CreateServerOptions {
    */
   apiHandler?: LayoutApiHandler;
   /**
+   * Handler for `POST /api/undo` (T31), built with `createUndoApiHandler`
+   * from `history/http.ts`. Owns its own method policy. Omitted → the route
+   * falls through to the static pipeline.
+   */
+  undoHandler?: (req: http.IncomingMessage, res: http.ServerResponse) => void | Promise<void>;
+  /**
    * Handler for a schema-valid `update` frame from a connected client,
    * receiving the parsed message and the sending socket (so the workspace
    * layer can exclude the originator from the resulting broadcast, and send
@@ -127,7 +133,14 @@ export interface ServerHandle {
  */
 export function createServer(options: CreateServerOptions): ServerHandle {
   const httpServer = http.createServer(
-    createRequestHandler(options.staticDir, options.mcpHandler, options.exportDir, options.openHandler, options.apiHandler),
+    createRequestHandler(
+      options.staticDir,
+      options.mcpHandler,
+      options.exportDir,
+      options.openHandler,
+      options.apiHandler,
+      options.undoHandler,
+    ),
   );
   const clients = new Set<WebSocket>();
 

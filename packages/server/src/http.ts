@@ -12,6 +12,7 @@ import path from "node:path";
 import { EXPORT_PATH, handleExportRequest } from "./export/save.js";
 import type { WorkspaceOps } from "./workspace/watcher.js";
 import { LAYOUT_API_PREFIX, type LayoutApiHandler } from "./layout-overrides.js";
+import { UNDO_PATH } from "./history/http.js";
 
 /**
  * Route for the MCP Streamable HTTP endpoint (Claude Code). Kept here so the
@@ -232,7 +233,9 @@ function sendFile(res: ServerResponse, method: string, filePath: string, size: n
  * When `exportDir` is provided, `POST` {@link EXPORT_PATH} is forwarded to
  * `handleExportRequest` (see `export/save.ts`), which owns body reading,
  * validation, and the filesystem write. Same deal for `openHandler` at
- * {@link API_OPEN_PATH} (the diagram picker's "open" action, DGC-57/T36).
+ * {@link API_OPEN_PATH} (the diagram picker's "open" action, DGC-57/T36),
+ * `apiHandler` for the layout-override sidecar (`/api/layout/:name`, T30),
+ * and `undoHandler` for `POST /api/undo` (T31) — each owns its method policy.
  */
 export function createRequestHandler(
   staticDir?: string,
@@ -240,6 +243,7 @@ export function createRequestHandler(
   exportDir?: string,
   openHandler?: OpenRequestHandler,
   apiHandler?: LayoutApiHandler,
+  undoHandler?: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>,
 ): (req: IncomingMessage, res: ServerResponse) => void {
   return (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
@@ -256,6 +260,12 @@ export function createRequestHandler(
 
     if (openHandler && url.pathname === API_OPEN_PATH) {
       void openHandler(req, res);
+      return;
+    }
+
+    // `POST /api/undo` (T31) — exact match, before the layout prefix below.
+    if (undoHandler && url.pathname === UNDO_PATH) {
+      void undoHandler(req, res);
       return;
     }
 
