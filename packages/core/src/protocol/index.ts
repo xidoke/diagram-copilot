@@ -129,14 +129,42 @@ export const WorkspaceMessageSchema = z.object({
   active: DiagramNameSchema,
 });
 
+/**
+ * Ask connected web clients to render a PNG snapshot of a diagram
+ * (added by T24 / DGC-44). The server cannot rasterize headlessly, so the
+ * `get_snapshot` MCP tool broadcasts this request and an open canvas that is
+ * currently rendering `name` answers with a {@link SnapshotResponseMessage}
+ * carrying the same correlation `id`. Clients showing a different diagram
+ * stay silent (the first matching response wins server-side).
+ */
+export interface SnapshotRequestMessage {
+  kind: "snapshot-request";
+  /** Correlation id — echoed back verbatim in the response. */
+  id: string;
+  /** Diagram name to capture (workspace file stem, no extension). */
+  name: string;
+}
+
+/** Zod schema for {@link SnapshotRequestMessage} (added by T24). */
+export const SnapshotRequestMessageSchema = z.object({
+  kind: z.literal("snapshot-request"),
+  id: z.string().min(1),
+  name: DiagramNameSchema,
+});
+
 /** Any message the server sends to clients, discriminated by `kind`. */
-export type ServerMessage = DiagramMessage | DiagramErrorMessage | WorkspaceMessage;
+export type ServerMessage =
+  | DiagramMessage
+  | DiagramErrorMessage
+  | WorkspaceMessage
+  | SnapshotRequestMessage;
 
 /** Zod schema for {@link ServerMessage}. */
 export const ServerMessageSchema = z.discriminatedUnion("kind", [
   DiagramMessageSchema,
   DiagramErrorMessageSchema,
   WorkspaceMessageSchema,
+  SnapshotRequestMessageSchema,
 ]);
 
 // ---------------------------------------------------------------------------
@@ -171,11 +199,45 @@ export const UpdateMessageSchema = z.object({
   baseVersion: VersionSchema,
 });
 
+/**
+ * A client's answer to a {@link SnapshotRequestMessage} (added by T24 /
+ * DGC-44). Sent ONLY by a client whose canvas is currently rendering the
+ * requested diagram: `ok: true` carries the rendered PNG as a
+ * `data:image/png;base64,…` data URL; `ok: false` carries a human-readable
+ * `error` (capture failed, canvas not ready, …).
+ */
+export interface SnapshotResponseMessage {
+  kind: "snapshot-response";
+  /** Correlation id copied from the request. */
+  id: string;
+  /** Diagram name that was captured (copied from the request). */
+  name: string;
+  /** Whether the capture succeeded. */
+  ok: boolean;
+  /** PNG data URL (`data:image/png;base64,…`) — present when `ok` is true. */
+  dataUrl?: string;
+  /** Failure reason — present when `ok` is false. */
+  error?: string;
+}
+
+/** Zod schema for {@link SnapshotResponseMessage} (added by T24). */
+export const SnapshotResponseMessageSchema = z.object({
+  kind: z.literal("snapshot-response"),
+  id: z.string().min(1),
+  name: DiagramNameSchema,
+  ok: z.boolean(),
+  dataUrl: z.string().optional(),
+  error: z.string().optional(),
+});
+
 /** Any message a client sends to the server, discriminated by `kind`. */
-export type ClientMessage = UpdateMessage;
+export type ClientMessage = UpdateMessage | SnapshotResponseMessage;
 
 /** Zod schema for {@link ClientMessage}. */
-export const ClientMessageSchema = z.discriminatedUnion("kind", [UpdateMessageSchema]);
+export const ClientMessageSchema = z.discriminatedUnion("kind", [
+  UpdateMessageSchema,
+  SnapshotResponseMessageSchema,
+]);
 
 /** Any protocol message, either direction. */
 export type ProtocolMessage = ServerMessage | ClientMessage;
@@ -228,7 +290,9 @@ export function parseClientMessage(raw: string): ParseMessageResult<ClientMessag
  * outbound message is a programming error, not a runtime condition.
  */
 export function serializeMessage(message: ProtocolMessage): string {
-  const schema = message.kind === "update" ? ClientMessageSchema : ServerMessageSchema;
+  // Client→server kinds: `update`, plus `snapshot-response` (added by T24).
+  const isClientMessage = message.kind === "update" || message.kind === "snapshot-response";
+  const schema = isClientMessage ? ClientMessageSchema : ServerMessageSchema;
   const parsed = schema.safeParse(message);
   if (!parsed.success) {
     throw new Error(`Cannot serialize invalid protocol message: ${formatZodError(parsed.error)}`);
@@ -258,3 +322,12 @@ type _WorkspaceInSync = Assert<
   MutuallyAssignable<z.infer<typeof WorkspaceMessageSchema>, WorkspaceMessage>
 >;
 type _UpdateInSync = Assert<MutuallyAssignable<z.infer<typeof UpdateMessageSchema>, UpdateMessage>>;
+// Snapshot messages (added by T24): note z.infer emits `prop?: T | undefined`
+// for `.optional()`, which is mutually assignable with `prop?: T` under the
+// default tsconfig (no exactOptionalPropertyTypes), same as the types above.
+type _SnapshotRequestInSync = Assert<
+  MutuallyAssignable<z.infer<typeof SnapshotRequestMessageSchema>, SnapshotRequestMessage>
+>;
+type _SnapshotResponseInSync = Assert<
+  MutuallyAssignable<z.infer<typeof SnapshotResponseMessageSchema>, SnapshotResponseMessage>
+>;

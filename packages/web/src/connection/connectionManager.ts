@@ -11,7 +11,12 @@
  * frames are parsed with `parseServerMessage`; frames that fail to parse
  * are dropped with a `console.warn` rather than throwing or updating state.
  */
-import { parseServerMessage, serializeMessage, type ClientMessage } from "@diagram-copilot/core";
+import {
+  parseServerMessage,
+  serializeMessage,
+  type ClientMessage,
+  type ServerMessage,
+} from "@diagram-copilot/core";
 import { nextBackoffDelay } from "./backoff.js";
 import { applyServerMessage, initialConnectionState } from "./messageReducer.js";
 import type { DiagramConnectionState } from "./types.js";
@@ -49,6 +54,16 @@ export interface ConnectionManager {
    * don't queue, to avoid replaying stale DSL after a reconnect.
    */
   send(message: ClientMessage): void;
+  /**
+   * Subscribe to every schema-valid inbound server message (added by T24).
+   * Fires AFTER the state reducer has applied the message, so listeners
+   * observing `getState()` see post-message state. Listeners handle
+   * transient request/response frames (e.g. `snapshot-request`) that never
+   * land in {@link DiagramConnectionState}. Returns an unsubscribe function.
+   * A throwing listener is logged and does not disturb state updates or
+   * other listeners.
+   */
+  onMessage(listener: (message: ServerMessage) => void): () => void;
   /** Tears down the socket and cancels any pending reconnect — final. */
   close(): void;
 }
@@ -71,6 +86,8 @@ export function createConnectionManager(options: ConnectionManagerOptions): Conn
   let socketOpen = false;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let stopped = false;
+  // Raw-message subscribers (T24) — e.g. the snapshot responder.
+  const messageListeners = new Set<(message: ServerMessage) => void>();
 
   function setState(next: DiagramConnectionState): void {
     state = next;
@@ -98,6 +115,15 @@ export function createConnectionManager(options: ConnectionManagerOptions): Conn
         return;
       }
       setState(applyServerMessage(state, result.message));
+      // Notify raw subscribers AFTER the reducer, shielding state updates
+      // (and other listeners) from a throwing listener.
+      for (const listener of messageListeners) {
+        try {
+          listener(result.message);
+        } catch (error) {
+          console.error("[diagram-copilot] onMessage listener failed:", error);
+        }
+      }
     };
 
     ws.onclose = () => {
@@ -136,6 +162,10 @@ export function createConnectionManager(options: ConnectionManagerOptions): Conn
         return;
       }
       socket.send(serializeMessage(message));
+    },
+    onMessage(listener: (message: ServerMessage) => void) {
+      messageListeners.add(listener);
+      return () => messageListeners.delete(listener);
     },
     close() {
       stopped = true;

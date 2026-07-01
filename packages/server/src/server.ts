@@ -12,6 +12,7 @@ import {
   parseClientMessage,
   serializeMessage,
   type ServerMessage,
+  type SnapshotResponseMessage,
   type UpdateMessage,
   type WorkspaceMessage,
 } from "@diagram-copilot/core";
@@ -83,6 +84,12 @@ export interface CreateServerOptions {
    * opt-in pattern as `mcpHandler`.
    */
   openHandler?: OpenRequestHandler;
+  /**
+   * Handler for a schema-valid `snapshot-response` frame from a connected
+   * client (T24) — typically the snapshot broker's `resolve`, wired by the
+   * CLI entry. Omitted → snapshot responses are logged and dropped.
+   */
+  onSnapshotResponse?: (message: SnapshotResponseMessage) => void;
 }
 
 export interface BroadcastOptions {
@@ -179,6 +186,19 @@ export function createServer(options: CreateServerOptions): ServerHandle {
           options.onClientUpdate(message, socket);
         } catch (error) {
           console.error("[server] client update handler failed:", error);
+        }
+      }
+      if (message.kind === "snapshot-response") {
+        if (!options.onSnapshotResponse) {
+          console.log(`[server] received snapshot-response (no snapshot handler wired)`);
+          return;
+        }
+        // Same shielding as onClientUpdate: a throwing handler must not take
+        // down the socket's message pump.
+        try {
+          options.onSnapshotResponse(message);
+        } catch (error) {
+          console.error("[server] snapshot response handler failed:", error);
         }
       }
     });
