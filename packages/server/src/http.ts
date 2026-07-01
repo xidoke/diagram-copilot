@@ -9,6 +9,7 @@
 import { createReadStream, statSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
+import { LAYOUT_API_PREFIX, type LayoutApiHandler } from "./layout-overrides.js";
 
 /**
  * Route for the MCP Streamable HTTP endpoint (Claude Code). Kept here so the
@@ -123,12 +124,20 @@ function sendFile(res: ServerResponse, method: string, filePath: string, size: n
 export function createRequestHandler(
   staticDir?: string,
   mcpHandler?: (req: IncomingMessage, res: ServerResponse) => Promise<void>,
+  apiHandler?: LayoutApiHandler,
 ): (req: IncomingMessage, res: ServerResponse) => void {
   return (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
 
     if (mcpHandler && url.pathname === MCP_PATH) {
       void mcpHandler(req, res);
+      return;
+    }
+
+    // Layout-override sidecar API (`/api/layout/:name`, GET/PUT/DELETE). Placed
+    // before the GET/HEAD-only guard below so its PUT/DELETE verbs reach it.
+    if (apiHandler && url.pathname.startsWith(LAYOUT_API_PREFIX)) {
+      void apiHandler(req, res);
       return;
     }
 
