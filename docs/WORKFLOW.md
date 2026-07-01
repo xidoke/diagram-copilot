@@ -43,6 +43,18 @@
 5. Đủ deps cho `[integration]` → Master chạy checkpoint, **demo nhìn thấy được**.
 6. **Đóng buổi:** commit + tick ROADMAP + 3 dòng log vào vault `Research/diagram-copilot/output/log.md`.
 
+## 5b. Vòng lặp chiến lược của Master (chạy khi worker đang bay — chống waterfall)
+
+Thời gian chờ worker là thời gian suy nghĩ đắt nhất — KHÔNG ngồi đợi notification. Mỗi khoảng rỗi, Master chạy một lượt (chọn 1-2 mục, không cần đủ):
+
+1. **Dogfood micro:** dùng thử sản phẩm ở trạng thái hiện tại 2 phút (mở canvas, sửa DSL, gọi tool MCP) → ghi khó chịu thật.
+2. **Backlog grooming:** đọc lại task sắp tới — mô tả còn đúng sau những gì vừa học? Deps đổi? Task nào nên tách/gộp/hủy?
+3. **Nghĩ nghiệp vụ:** quay về câu hỏi gốc "người học SD cần gì?" — tính năng nào đang thiếu trong roadmap mà usage thật vừa lộ ra? Đề xuất task mới (đưa Đô duyệt nếu đổi scope).
+4. **Risk scan:** nợ kỹ thuật mới phát sinh từ báo cáo worker (bug tìm thấy, quyết định tạm) — cái nào cần thành task trước khi bị quên?
+5. **Đồng bộ tri thức:** phát hiện đáng giá của worker → Plane comment vào task tương ứng hoặc vault; spec/ROADMAP lệch thực tế → sửa ngay.
+
+Nguyên tắc: **plan là tài liệu sống** — mỗi wave xong, backlog phải tốt hơn wave trước. Thêm/sửa task nhỏ trong scope: Master tự quyết + ghi lại; đổi scope release: hỏi Đô.
+
 ## 6. Model tiering (tiết kiệm chi phí, không tiếc với task khó)
 
 Master chọn model cho worker khi dispatch (tham số `model` của Agent). Nguyên tắc: **mechanical → Sonnet 5 · vừa → Opus 4.8 · khó/kiến trúc/tích hợp → Fable 5**. Đừng hạ tier cho task khó để tiết kiệm — sửa sai đắt hơn chạy đúng một lần.
