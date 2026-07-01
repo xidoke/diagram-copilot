@@ -8,7 +8,7 @@
  * read until they become active, matching the "server is the only DSL
  * parser, and only for what clients need right now" architecture decision.
  */
-import { mkdirSync, readFileSync, readdirSync, type Dirent } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, writeFileSync, type Dirent } from "node:fs";
 import path from "node:path";
 import { watch as watchDir, type FSWatcher } from "chokidar";
 import {
@@ -40,13 +40,72 @@ export interface WorkspaceState {
   versions: Map<string, number>;
 }
 
-export interface WorkspaceWatcher {
+/** One diagram entry as reported to MCP tools / the picker. */
+export interface DiagramListing {
+  /** Diagram name (file stem, no `.arch`). */
+  name: string;
+  /** Last accepted version, or `0` if never parsed successfully. */
+  version: number;
+  /** Whether this is the currently active diagram. */
+  active: boolean;
+}
+
+/** Outcome of {@link WorkspaceOps.open}. */
+export interface OpenResult {
+  /** `true` when the diagram is now active; `false` on a validation failure. */
+  ok: boolean;
+  /** `true` when a brand-new diagram file was created by this call. */
+  created: boolean;
+  /** Normalized diagram name (or the raw input when validation failed). */
+  name: string;
+  /** Version of the now-active diagram (`0` when never parsed / on failure). */
+  version: number;
+  /** Human-readable reason when `ok` is `false`. */
+  error?: string;
+}
+
+/** Outcome of {@link WorkspaceWatcher.createDiagram}. */
+export interface CreateDiagramResult {
+  /** `true` when a new file was written. */
+  ok: boolean;
+  /** Normalized diagram name (or the raw input when validation failed). */
+  name: string;
+  /** Human-readable reason when `ok` is `false` (invalid name, already exists). */
+  error?: string;
+}
+
+/**
+ * Narrow, read/activate-only view of the workspace handed to MCP tools
+ * (`list_diagrams`, `open_diagram`, and — reused by T20 — future workspace
+ * tools). Deliberately excludes the watcher's lifecycle (`start`/`stop`) and
+ * raw state so tool code cannot drive the filesystem watcher directly.
+ */
+export interface WorkspaceOps {
+  /** All diagrams, sorted by name, with their version and active flag. */
+  list(): DiagramListing[];
+  /** Activate `name`, creating it from a template if it does not exist yet. */
+  open(name: string): OpenResult;
+}
+
+export interface WorkspaceWatcher extends WorkspaceOps {
   /** Scan the workspace, parse+broadcast the active diagram, then start watching for changes. */
   start(): Promise<void>;
   /** Stop watching and release resources. Safe to call even if `start()` was never called. */
   stop(): Promise<void>;
   /** Current in-memory view of the workspace (diagrams, active, versions). */
   getState(): WorkspaceState;
+  /**
+   * Explicitly make `name` the active diagram (a "sticky" choice that wins over
+   * the automatic demo/alphabetical pick until its file is deleted). Re-parses
+   * and broadcasts the diagram plus a workspace update.
+   */
+  setActive(name: string): void;
+  /**
+   * Create a new diagram file (validated name, `.arch` appended) seeded with a
+   * template (or `dsl` when given), then make it active. Refuses to overwrite
+   * an existing file and rejects path-traversal names.
+   */
+  createDiagram(name: string, dsl?: string): CreateDiagramResult;
 }
 
 type FileEventKind = "add" | "change" | "unlink";
@@ -66,6 +125,38 @@ function setsEqual(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
   if (a.size !== b.size) return false;
   for (const value of a) if (!b.has(value)) return false;
   return true;
+}
+
+/**
+ * Validate + normalize a caller-supplied diagram name into a bare file stem.
+ *
+ * Accepts an optional trailing `.arch` (stripped), rejects empty names and
+ * anything that could escape the workspace directory — path separators or
+ * `..`. The name is used verbatim to build a path under the workspace root, so
+ * this is the single choke point that keeps `createDiagram`/`open` from writing
+ * outside it.
+ */
+function validateDiagramName(raw: string): { ok: true; name: string } | { ok: false; error: string } {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) {
+    return { ok: false, error: "Diagram name must not be empty." };
+  }
+  const name = trimmed.endsWith(ARCH_EXT) ? trimmed.slice(0, -ARCH_EXT.length) : trimmed;
+  if (name.length === 0) {
+    return { ok: false, error: "Diagram name must not be empty." };
+  }
+  if (name.includes("/") || name.includes("\\") || name.includes("..")) {
+    return {
+      ok: false,
+      error: `Invalid diagram name "${raw}" — names cannot contain path separators or "..".`,
+    };
+  }
+  return { ok: true, name };
+}
+
+/** Seed contents for a freshly created diagram (a valid, empty-canvas doc). */
+function diagramTemplate(name: string): string {
+  return `// ${name}\ndirection right\n`;
 }
 
 /** Non-recursive scan of `dir` for `.arch` files. Missing dir reads as empty. */
@@ -88,9 +179,26 @@ export function createWorkspaceWatcher(options: WorkspaceWatcherOptions): Worksp
   const diagrams = new Set<string>();
   const versions = new Map<string, number>();
   let active: string | null = null;
+  // An explicit `setActive`/`open` choice that overrides the automatic
+  // demo/alphabetical pick. Cleared automatically once its file disappears, so
+  // deleting the active diagram falls back to auto-selection (see resolveActive).
+  let stickyActive: string | null = null;
 
   let watcher: FSWatcher | undefined;
   const debounceTimers = new Map<string, NodeJS.Timeout>();
+
+  /**
+   * Which diagram should be active right now: the sticky choice if it still
+   * exists, otherwise the automatic pick. A vanished sticky choice is cleared
+   * here so it never resurrects if a file with that name reappears later.
+   */
+  function resolveActive(): string | null {
+    if (stickyActive !== null) {
+      if (diagrams.has(stickyActive)) return stickyActive;
+      stickyActive = null;
+    }
+    return computeActive(diagrams);
+  }
 
   function broadcastWorkspace(): void {
     const message: WorkspaceMessage = {
@@ -153,7 +261,7 @@ export function createWorkspaceWatcher(options: WorkspaceWatcherOptions): Worksp
       diagrams.add(name);
     }
 
-    const newActive = computeActive(diagrams);
+    const newActive = resolveActive();
     const diagramsChanged = !setsEqual(prevDiagrams, diagrams);
     const activeChanged = newActive !== prevActive;
     active = newActive;
@@ -185,12 +293,72 @@ export function createWorkspaceWatcher(options: WorkspaceWatcherOptions): Worksp
     debounceTimers.set(name, timer);
   }
 
+  /**
+   * Make `name` the sticky-active diagram and push fresh state to clients: a
+   * workspace update plus the diagram (or diagram-error) frame for its content.
+   * Broadcasts unconditionally — an explicit activation is a user action worth
+   * echoing even if `name` was already active (the canvas re-syncs).
+   */
+  function setActive(name: string): void {
+    stickyActive = name;
+    active = resolveActive();
+    broadcastWorkspace();
+    if (active !== null) parseAndBroadcastActive(active);
+  }
+
+  function createDiagram(name: string, dsl?: string): CreateDiagramResult {
+    const validated = validateDiagramName(name);
+    if (!validated.ok) return { ok: false, name, error: validated.error };
+    const stem = validated.name;
+    const filePath = path.join(root, `${stem}${ARCH_EXT}`);
+    try {
+      // `wx`: create-exclusive — fail rather than clobber an existing diagram.
+      writeFileSync(filePath, dsl ?? diagramTemplate(stem), { flag: "wx" });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+        return { ok: false, name: stem, error: `Diagram "${stem}" already exists.` };
+      }
+      throw error;
+    }
+    // Reflect the new file immediately rather than waiting for the debounced fs
+    // watcher, so a subsequent read/list observes it synchronously. The later
+    // watcher "add" event is then a no-op (already present, already active).
+    diagrams.add(stem);
+    setActive(stem);
+    return { ok: true, name: stem };
+  }
+
+  function list(): DiagramListing[] {
+    return [...diagrams].sort().map((name) => ({
+      name,
+      version: versions.get(name) ?? 0,
+      active: name === active,
+    }));
+  }
+
+  function open(name: string): OpenResult {
+    const validated = validateDiagramName(name);
+    if (!validated.ok) {
+      return { ok: false, created: false, name, version: 0, error: validated.error };
+    }
+    const stem = validated.name;
+    if (diagrams.has(stem)) {
+      setActive(stem);
+      return { ok: true, created: false, name: stem, version: versions.get(stem) ?? 0 };
+    }
+    const result = createDiagram(stem);
+    if (!result.ok) {
+      return { ok: false, created: false, name: result.name, version: 0, error: result.error };
+    }
+    return { ok: true, created: true, name: result.name, version: versions.get(result.name) ?? 0 };
+  }
+
   return {
     async start() {
       mkdirSync(root, { recursive: true });
 
       for (const name of scanArchFileNames(root)) diagrams.add(name);
-      active = computeActive(diagrams);
+      active = resolveActive();
       broadcastWorkspace();
       if (active !== null) parseAndBroadcastActive(active);
 
@@ -225,6 +393,11 @@ export function createWorkspaceWatcher(options: WorkspaceWatcherOptions): Worksp
         versions: new Map(versions),
       };
     },
+
+    setActive,
+    createDiagram,
+    list,
+    open,
   };
 }
 

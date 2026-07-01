@@ -24,6 +24,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { registerGetDslGuideTool } from "./tools/guide.js";
 import { registerListIconsTool } from "./tools/icons.js";
+import type { WorkspaceOps } from "../workspace/watcher.js";
+import { registerWorkspaceTools } from "./tools/workspace.js";
 
 /** MCP server identity advertised in the `initialize` result. */
 export const MCP_SERVER_NAME = "diagram-copilot";
@@ -44,6 +46,13 @@ export interface McpHandlerOptions {
    * `getState()` so tools always answer from live data, never a stale copy.
    */
   getInfo: () => McpInfo;
+  /**
+   * Live workspace operations for `list_diagrams` / `open_diagram` (and future
+   * T20 tools). Wire to the workspace watcher, returning `null` before it has
+   * started. Omit entirely for a bare ping-only server (those tools are then
+   * not registered).
+   */
+  getWorkspace?: () => WorkspaceOps | null;
 }
 
 /** A `node:http` request handler for the `/mcp` route. */
@@ -76,6 +85,11 @@ function registerTools(server: McpServer, options: McpHandlerOptions): void {
   );
   registerGetDslGuideTool(server);
   registerListIconsTool(server);
+
+  // Workspace tools plug in only when the server is wired with a workspace.
+  if (options.getWorkspace !== undefined) {
+    registerWorkspaceTools(server, options.getWorkspace);
+  }
 }
 
 /**
