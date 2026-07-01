@@ -114,7 +114,10 @@ async function main(): Promise<void> {
     port: options.port,
     staticDir: resolveStaticDir(),
     getWelcome,
-    mcpHandler: createMcpHandler({ getInfo: getMcpInfo }),
+    // Same mutable-watcher-ref pattern as `getWelcome`/`getMcpInfo`: the
+    // watcher is created after the port is secured, so tools read `null` until
+    // then and the live `WorkspaceOps` (list/open) afterwards.
+    mcpHandler: createMcpHandler({ getInfo: getMcpInfo, getWorkspace: () => watcher ?? null }),
   });
 
   try {
