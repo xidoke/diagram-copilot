@@ -13,5 +13,10 @@
 ## Kiến trúc (tóm tắt)
 DSL kiểu eraser (Langium) → model (Zod) → auto-layout (elkjs) → render (React Flow, theme dark blueprint). Local Node server: serve canvas + WebSocket live-sync + MCP endpoint `/mcp` (Streamable HTTP, port 4747) cho Claude Code.
 
+## Dev
+- `pnpm install` rồi `pnpm dev` — chạy song song server (`tsx watch`, port 4747, tự restart khi sửa `packages/server` hoặc `packages/core`) + web (Vite, port 4700).
+- Chạy riêng một bên: `pnpm dev:server` hoặc `pnpm dev:web`.
+- Trước khi commit: `pnpm -r build` và `pnpm -r test`.
+
 ## Spike đã verify
 `spikes/reactflow-elk-layout/` — nested VPC/subnet + cross-tier edges, layout ~60ms. `npm i && npm run dev` (port 5178).

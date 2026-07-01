@@ -8,7 +8,9 @@
   "scripts": {
     "test": "pnpm -r test",
     "build": "pnpm -r build",
-    "dev": "pnpm --parallel -r dev"
+    "dev": "pnpm --parallel --filter @diagram-copilot/server --filter @diagram-copilot/web dev",
+    "dev:server": "pnpm --filter @diagram-copilot/server dev",
+    "dev:web": "pnpm --filter @diagram-copilot/web dev"
   },
   "devDependencies": {
     "typescript": "~5.6",
