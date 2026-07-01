@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   BackgroundVariant,
@@ -16,6 +16,7 @@ import { layoutDiagram } from "@diagram-copilot/layout";
 import { ExportMenu } from "./components/ExportMenu.js";
 import { StatusPill } from "./components/StatusPill.js";
 import { Toolbar } from "./components/Toolbar.js";
+import { Drawer } from "./components/Drawer.js";
 import { useDiagramConnection } from "./connection/index.js";
 import { applyPrefs, loadLayoutPrefs, saveLayoutPrefs, type LayoutPrefs } from "./render/layoutOptions.js";
 import { ArchGroup, ArchNode } from "./render/ArchNode.js";
@@ -32,9 +33,11 @@ const nodeTypes = { [ARCH_NODE_TYPE]: ArchNode, [ARCH_GROUP_TYPE]: ArchGroup };
 const edgeTypes = { [ELK_EDGE_TYPE]: ElkEdge };
 
 function DiagramCanvas() {
-  const { status, lastDiagram, lastError } = useDiagramConnection();
+  const { status, lastDiagram, lastError, send } = useDiagramConnection();
   const [flow, setFlow] = useState<{ nodes: Node[]; edges: Edge[] }>({ nodes: [], edges: [] });
   const [prefs, setPrefs] = useState<LayoutPrefs>(() => loadLayoutPrefs());
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const toggleDrawer = useCallback(() => setDrawerOpen((o) => !o), []);
   const { fitView } = useReactFlow();
 
   useEffect(() => {
@@ -129,6 +132,7 @@ function DiagramCanvas() {
         <Controls />
       </ReactFlow>
       <StatusPill status={status} />
+      <Drawer open={drawerOpen} onToggle={toggleDrawer} diagram={lastDiagram} send={send} />
     </div>
   );
 }

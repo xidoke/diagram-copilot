@@ -11,7 +11,7 @@
  * frames are parsed with `parseServerMessage`; frames that fail to parse
  * are dropped with a `console.warn` rather than throwing or updating state.
  */
-import { parseServerMessage } from "@diagram-copilot/core";
+import { parseServerMessage, serializeMessage, type ClientMessage } from "@diagram-copilot/core";
 import { nextBackoffDelay } from "./backoff.js";
 import { applyServerMessage, initialConnectionState } from "./messageReducer.js";
 import type { DiagramConnectionState } from "./types.js";
@@ -22,6 +22,7 @@ export interface WebSocketLike {
   onclose: ((ev: unknown) => void) | null;
   onmessage: ((ev: { data: string }) => void) | null;
   onerror: ((ev: unknown) => void) | null;
+  send(data: string): void;
   close(): void;
 }
 
@@ -40,6 +41,14 @@ export interface ConnectionManagerOptions {
 export interface ConnectionManager {
   /** Current state (same value last passed to `onStateChange`). */
   getState(): DiagramConnectionState;
+  /**
+   * Serialize and send a client→server message over the open socket.
+   * If the socket isn't open yet (connecting/reconnecting), the message is
+   * dropped with a `console.warn` — the server is the source of truth, so a
+   * dropped optimistic edit simply means the next successful edit wins; we
+   * don't queue, to avoid replaying stale DSL after a reconnect.
+   */
+  send(message: ClientMessage): void;
   /** Tears down the socket and cancels any pending reconnect — final. */
   close(): void;
 }
@@ -59,6 +68,7 @@ export function createConnectionManager(options: ConnectionManagerOptions): Conn
   let state = initialConnectionState;
   let attempt = 0;
   let socket: WebSocketLike | null = null;
+  let socketOpen = false;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let stopped = false;
 
@@ -73,9 +83,11 @@ export function createConnectionManager(options: ConnectionManagerOptions): Conn
 
     const ws = new WebSocketImpl(options.url);
     socket = ws;
+    socketOpen = false;
 
     ws.onopen = () => {
       attempt = 0;
+      socketOpen = true;
       setState({ ...state, status: "connected" });
     };
 
@@ -89,6 +101,7 @@ export function createConnectionManager(options: ConnectionManagerOptions): Conn
     };
 
     ws.onclose = () => {
+      socketOpen = false;
       if (stopped) return;
       setState({ ...state, status: "disconnected" });
       scheduleReconnect();
@@ -113,6 +126,16 @@ export function createConnectionManager(options: ConnectionManagerOptions): Conn
   return {
     getState() {
       return state;
+    },
+    send(message: ClientMessage) {
+      if (!socket || !socketOpen) {
+        console.warn(
+          "[diagram-copilot] dropped outbound message; socket not open:",
+          message.kind,
+        );
+        return;
+      }
+      socket.send(serializeMessage(message));
     },
     close() {
       stopped = true;
