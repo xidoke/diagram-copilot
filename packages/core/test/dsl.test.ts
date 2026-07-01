@@ -150,6 +150,126 @@ describe("parseDsl — happy path", () => {
   });
 });
 
+describe("parseDsl — groups", () => {
+  it("parses a two-level nested group fixture with correct parent/groupId", () => {
+    const doc = parseOk(
+      ["VPC subnet {", "  Main Server {", "    Server", "    Data", "  }", "}"].join("\n"),
+    );
+    expect(doc.groups).toEqual([
+      { id: "VPC subnet", label: "VPC subnet" },
+      { id: "Main Server", label: "Main Server", parentId: "VPC subnet" },
+    ]);
+    expect(doc.nodes).toEqual([
+      { id: "Server", label: "Server", groupId: "Main Server" },
+      { id: "Data", label: "Data", groupId: "Main Server" },
+    ]);
+    expect(doc.edges).toEqual([]);
+  });
+
+  it("parses a single-level group with a leaf node", () => {
+    const doc = parseOk(["VPC {", "  Server", "}"].join("\n"));
+    expect(doc.groups).toEqual([{ id: "VPC", label: "VPC" }]);
+    expect(doc.nodes).toEqual([{ id: "Server", label: "Server", groupId: "VPC" }]);
+  });
+
+  it("parses an empty group", () => {
+    const doc = parseOk(["VPC {", "}"].join("\n"));
+    expect(doc.groups).toEqual([{ id: "VPC", label: "VPC" }]);
+    expect(doc.nodes).toEqual([]);
+  });
+
+  it("allows an edge to reference a group (no spurious node created)", () => {
+    const doc = parseOk(["VPC {", "  Server", "}", "Client > VPC"].join("\n"));
+    expect(doc.groups).toEqual([{ id: "VPC", label: "VPC" }]);
+    // Client is a real node; VPC is a group, not auto-created as a node.
+    expect(doc.nodes).toEqual([
+      { id: "Server", label: "Server", groupId: "VPC" },
+      { id: "Client", label: "Client" },
+    ]);
+    expect(doc.edges).toEqual([{ id: "e1", from: "Client", to: "VPC" }]);
+  });
+
+  it("allows an edge to reference a group declared later (forward reference)", () => {
+    const doc = parseOk(["Client > VPC", "VPC {", "  Server", "}"].join("\n"));
+    expect(doc.nodes).toEqual([
+      { id: "Client", label: "Client" },
+      { id: "Server", label: "Server", groupId: "VPC" },
+    ]);
+    expect(doc.edges).toEqual([{ id: "e1", from: "Client", to: "VPC" }]);
+  });
+
+  it("lets an explicit in-group declaration win over an implicit edge node", () => {
+    const doc = parseOk(["Client > Server", "VPC {", "  Server", "}"].join("\n"));
+    // Server was first seen implicitly (no group); the explicit declaration
+    // inside VPC assigns its group membership.
+    expect(doc.nodes).toEqual([
+      { id: "Client", label: "Client" },
+      { id: "Server", label: "Server", groupId: "VPC" },
+    ]);
+    expect(doc.edges).toEqual([{ id: "e1", from: "Client", to: "Server" }]);
+  });
+});
+
+describe("parseDsl — attributes", () => {
+  it("parses icon, color, and label attributes on a node", () => {
+    const doc = parseOk(["API [icon: server, color: orange]", "Server_A [label: server]"].join("\n"));
+    expect(doc.nodes).toEqual([
+      { id: "API", label: "API", icon: "server", color: "orange" },
+      { id: "Server_A", label: "server" },
+    ]);
+  });
+
+  it("keeps the id as the declared name even when label is overridden", () => {
+    const doc = parseOk("Main Server [label: Primary]\n");
+    expect(doc.nodes).toEqual([{ id: "Main Server", label: "Primary" }]);
+  });
+
+  it("parses attributes and a group block on the same line", () => {
+    const doc = parseOk(
+      ["Main Server [icon: server, color: blue] {", "  Server", "}"].join("\n"),
+    );
+    expect(doc.groups).toEqual([
+      { id: "Main Server", label: "Main Server", icon: "server", color: "blue" },
+    ]);
+    expect(doc.nodes).toEqual([{ id: "Server", label: "Server", groupId: "Main Server" }]);
+  });
+
+  it("applies a label attribute to a group", () => {
+    const doc = parseOk(["VPC [label: Virtual Private Cloud] {", "  Server", "}"].join("\n"));
+    expect(doc.groups).toEqual([{ id: "VPC", label: "Virtual Private Cloud" }]);
+  });
+
+  it("tolerates an empty attribute list", () => {
+    const doc = parseOk("API []\n");
+    expect(doc.nodes).toEqual([{ id: "API", label: "API" }]);
+  });
+
+  it("allows attribute values to contain spaces", () => {
+    const doc = parseOk("API [icon: aws ec2]\n");
+    expect(doc.nodes[0]).toEqual({ id: "API", label: "API", icon: "aws ec2" });
+  });
+
+  it("reports a ParseError for an unknown attribute key", () => {
+    const result = parseFail("API [foo: bar]\n");
+    expect(result.modelErrors).toEqual([]);
+    expect(result.parseErrors.length).toBeGreaterThan(0);
+    expect(result.parseErrors[0]!.message).toMatch(/foo/);
+    expect(result.parseErrors[0]!.line).toBe(1);
+  });
+
+  it("reports a ParseError for a malformed attribute (missing colon)", () => {
+    const result = parseFail("API [server]\n");
+    expect(result.parseErrors.length).toBeGreaterThan(0);
+    expect(result.parseErrors[0]!.message).toMatch(/attribute/i);
+  });
+
+  it("reports a ParseError for an attribute with an empty value", () => {
+    const result = parseFail("API [icon: ]\n");
+    expect(result.parseErrors.length).toBeGreaterThan(0);
+    expect(result.parseErrors[0]!.message).toMatch(/icon/);
+  });
+});
+
 describe("parseDsl — errors", () => {
   it("reports a ParseError on the correct line for an edge missing its target", () => {
     const result = parseFail("Client\nClient >\nServer");

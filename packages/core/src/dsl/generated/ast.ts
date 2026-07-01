@@ -9,7 +9,8 @@ import * as langium from 'langium';
 export const ArchDslTerminals = {
     NL: /\r?\n/,
     EDGE_LABEL: /:[^\n\r]*/,
-    WORD: /[^\s>:]+/,
+    ATTRS: /\[[^\]\r\n]*\]/,
+    WORD: /[^\s>:{}\[\],]+/,
     WS: /[ \t]+/,
 };
 
@@ -17,11 +18,13 @@ export type ArchDslTerminalNames = keyof typeof ArchDslTerminals;
 
 export type ArchDslKeywordNames =
     | ">"
-    | "direction";
+    | "direction"
+    | "{"
+    | "}";
 
 export type ArchDslTokenNames = ArchDslTerminalNames | ArchDslKeywordNames;
 
-export type Line = DirectionLine | StatementLine;
+export type Line = DirectionLine | Statement;
 
 export const Line = 'Line';
 
@@ -30,7 +33,7 @@ export function isLine(item: unknown): item is Line {
 }
 
 export interface DirectionLine extends langium.AstNode {
-    readonly $container: Document;
+    readonly $container: Document | Statement;
     readonly $type: 'DirectionLine';
     value: string;
 }
@@ -53,7 +56,7 @@ export function isDocument(item: unknown): item is Document {
 }
 
 export interface Name extends langium.AstNode {
-    readonly $container: StatementLine;
+    readonly $container: Statement;
     readonly $type: 'Name';
     parts: Array<string>;
 }
@@ -64,18 +67,21 @@ export function isName(item: unknown): item is Name {
     return reflection.isInstance(item, Name);
 }
 
-export interface StatementLine extends langium.AstNode {
-    readonly $container: Document;
-    readonly $type: 'StatementLine';
+export interface Statement extends langium.AstNode {
+    readonly $container: Document | Statement;
+    readonly $type: 'Statement';
+    attrs?: string;
+    body: Array<Line>;
+    isGroup: boolean;
     label?: string;
     source: Name;
     target?: Name;
 }
 
-export const StatementLine = 'StatementLine';
+export const Statement = 'Statement';
 
-export function isStatementLine(item: unknown): item is StatementLine {
-    return reflection.isInstance(item, StatementLine);
+export function isStatement(item: unknown): item is Statement {
+    return reflection.isInstance(item, Statement);
 }
 
 export type ArchDslAstType = {
@@ -83,19 +89,19 @@ export type ArchDslAstType = {
     Document: Document
     Line: Line
     Name: Name
-    StatementLine: StatementLine
+    Statement: Statement
 }
 
 export class ArchDslAstReflection extends langium.AbstractAstReflection {
 
     getAllTypes(): string[] {
-        return [DirectionLine, Document, Line, Name, StatementLine];
+        return [DirectionLine, Document, Line, Name, Statement];
     }
 
     protected override computeIsSubtype(subtype: string, supertype: string): boolean {
         switch (subtype) {
             case DirectionLine:
-            case StatementLine: {
+            case Statement: {
                 return this.isSubtype(Line, supertype);
             }
             default: {
@@ -139,10 +145,13 @@ export class ArchDslAstReflection extends langium.AbstractAstReflection {
                     ]
                 };
             }
-            case StatementLine: {
+            case Statement: {
                 return {
-                    name: StatementLine,
+                    name: Statement,
                     properties: [
+                        { name: 'attrs' },
+                        { name: 'body', defaultValue: [] },
+                        { name: 'isGroup', defaultValue: false },
                         { name: 'label' },
                         { name: 'source' },
                         { name: 'target' }
