@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@diagram-copilot/core": "workspace:*",
+    "chokidar": "^4",
     "ws": "^8"
   },
   "devDependencies": {

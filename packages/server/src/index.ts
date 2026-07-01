@@ -12,7 +12,9 @@ import { parseArgs } from "node:util";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createServer, WS_PATH } from "./server.js";
+import type { ServerMessage } from "@diagram-copilot/core";
+import { createServer, WELCOME_WORKSPACE, WS_PATH } from "./server.js";
+import { buildWelcomeMessages, createWorkspaceWatcher, type WorkspaceWatcher } from "./workspace/watcher.js";
 
 /** Fixed default port. Kept in sync with the MCP endpoint registration. */
 export const DEFAULT_PORT = 4747;
@@ -75,10 +77,17 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // T3: the workspace path is parsed and logged only; the watcher lands later.
   console.log(`[server] workspace: ${options.workspace}`);
 
-  const server = createServer({ port: options.port, staticDir: resolveStaticDir() });
+  // `getWelcome` is wired to the server at creation time, but the watcher it
+  // reads from is only created after `start()` succeeds (no point scanning
+  // the workspace if the port is taken). The mutable ref lets each new
+  // connection see whatever the watcher currently knows, once it exists.
+  let watcher: WorkspaceWatcher | undefined;
+  const getWelcome = (): ServerMessage[] =>
+    watcher ? buildWelcomeMessages(options.workspace, watcher.getState()) : [WELCOME_WORKSPACE];
+
+  const server = createServer({ port: options.port, staticDir: resolveStaticDir(), getWelcome });
 
   try {
     const { url } = await server.start();
@@ -92,8 +101,15 @@ async function main(): Promise<void> {
     throw error;
   }
 
+  watcher = createWorkspaceWatcher({ dir: options.workspace, broadcast: server.broadcast });
+  await watcher.start();
+  const state = watcher.getState();
+  console.log(
+    `[server] workspace scan: ${state.diagrams.length} diagram(s) found, active "${state.active ?? "untitled"}"`,
+  );
+
   const shutdown = () => {
-    void server.stop().then(() => process.exit(0));
+    void Promise.all([watcher?.stop(), server.stop()]).then(() => process.exit(0));
   };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
