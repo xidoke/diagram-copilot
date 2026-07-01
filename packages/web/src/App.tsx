@@ -13,6 +13,7 @@ import "@xyflow/react/dist/style.css";
 import "./tokens.css";
 import "./App.css";
 import { layoutDiagram } from "@diagram-copilot/layout";
+import { ExportMenu } from "./components/ExportMenu.js";
 import { StatusPill } from "./components/StatusPill.js";
 import { Toolbar } from "./components/Toolbar.js";
 import { useDiagramConnection } from "./connection/index.js";
@@ -104,6 +105,7 @@ function DiagramCanvas() {
         </div>
       )}
       <Toolbar prefs={prefs} onChange={setPrefs} />
+      <ExportMenu name={lastDiagram?.name ?? "diagram"} version={lastDiagram?.version ?? 0} />
       {showError && lastError && (
         <div className="error-banner">
           <b>{lastError.name}</b>:{" "}
