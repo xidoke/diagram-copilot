@@ -10,3 +10,9 @@ Client > CDN
 CDN > API Server
 API Server > Redis: cache
 API Server > Postgres: query
+Worker
+Queue
+
+API Server > Queue
+Queue > Worker
+Worker > Postgres
