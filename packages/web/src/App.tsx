@@ -266,7 +266,7 @@ function DiagramCanvas() {
       )}
       <StatusPill status={status} />
       <UndoButton name={lastDiagram?.name ?? null} />
-      <Drawer open={drawerOpen} onToggle={toggleDrawer} diagram={lastDiagram} send={send} />
+      <Drawer open={drawerOpen} onToggle={toggleDrawer} diagram={lastDiagram} send={send} lastError={lastError} />
     </div>
   );
 }
