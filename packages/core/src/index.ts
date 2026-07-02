@@ -29,6 +29,22 @@ export {
 // DSL parser (DGC-26) — eraser-style DSL → DiagramDoc
 export { parseDsl, type ParseDslResult } from "./dsl/index.js";
 
+// Structural diff (DGC-74) — `diffDocs(a, b)` compares two DiagramDocs (ids by
+// name, edges by from/to/label); `isDiffEmpty` reports "no change". Feeds the
+// `diff_diagram` MCP tool and a later design-evolution overlay.
+export {
+  diffDocs,
+  isDiffEmpty,
+  type AttrField,
+  type DocDiff,
+  type EdgeLabelChange,
+  type EdgeRef,
+  type FieldChange,
+  type GroupChange,
+  type MembershipChange,
+  type NodeChange,
+} from "./dsl/index.js";
+
 // DSL printer + minimal-diff doc edits (DGC-17) — DiagramDoc → DSL text.
 // Foundation for v1.2 visual editing: `printDsl` renders a canonical document,
 // `applyDocEdit` rewrites existing text preserving comments/order/bytes of
