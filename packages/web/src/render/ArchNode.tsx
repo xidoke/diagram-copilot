@@ -68,7 +68,11 @@ export function ArchGroup({ data }: NodeProps) {
       {/* Hidden handles so edges may terminate on the group itself
           (`API > VPC`). Positioned by flow direction, like ArchNode. */}
       <Handle type="target" position={pos.target} className="arch-handle" />
-      <span className="arch-group-label">
+      {/* Title band = the group's drag handle (DGC-71). React Flow only starts
+          a group drag when the pointerdown lands here (see ARCH_GROUP_DRAG_HANDLE
+          / dragHandle in toFlow); the body stays free for pan/select/child-drag.
+          `title` gives a hover tooltip hinting the affordance. */}
+      <div className="arch-group__title" title="Kéo tiêu đề để di chuyển nhóm">
         {icon !== undefined && (
           <span
             className="arch-group-chip"
@@ -78,8 +82,8 @@ export function ArchGroup({ data }: NodeProps) {
             dangerouslySetInnerHTML={{ __html: getIcon(icon).svg }}
           />
         )}
-        {label}
-      </span>
+        <span className="arch-group-label">{label}</span>
+      </div>
       <Handle type="source" position={pos.source} className="arch-handle" />
     </div>
   );

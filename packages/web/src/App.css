@@ -449,18 +449,52 @@ body {
 .arch-group--accent:hover {
   border-color: var(--node-accent, var(--accent));
 }
-.arch-group-label {
+/* Body pass-through (DGC-71): making a group draggable makes React Flow stamp
+   the wrapper `pointer-events: all` (+ a `nopan` class), which would hijack the
+   whole body and kill canvas panning over it. Force the wrapper transparent to
+   pointer events so an empty-body press falls through to the pane (pan, as
+   before groups were draggable) and child nodes stacked above stay fully
+   interactive; only the title band below opts back in as the drag handle.
+   `!important` is needed to beat React Flow's inline style. */
+.react-flow__node-archGroup {
+  pointer-events: none !important;
+}
+
+/* Title band = the group's drag handle (DGC-71). Spans the top of the group;
+   grabbing it drags the whole group + descendants, while the body stays a
+   pan/select surface. Kept within GROUP_TITLE_BAND (32px, toFlow) so it never
+   overlaps a child node, which the extent clamp keeps below the band. */
+.arch-group__title {
+  pointer-events: auto;
   position: absolute;
-  top: 8px;
-  left: 12px;
+  top: 0;
+  left: 0;
+  right: 0;
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  padding: 8px 12px;
+  border-radius: var(--group-radius) var(--group-radius) 0 0;
+  cursor: grab;
+  transition: background 0.12s ease;
+}
+/* Discoverability: a faint accent wash on hover hints the header is grabbable. */
+.arch-group__title:hover {
+  background: var(--group-title-hover, rgba(74, 163, 255, 0.1));
+}
+/* Grab → grabbing while a drag is in flight (React Flow flags the node wrapper
+   `.dragging`; `:active` covers the initial press). */
+.arch-group__title:active,
+.react-flow__node.dragging .arch-group__title {
+  cursor: grabbing;
+}
+.arch-group-label {
   font-size: 11px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-dim);
   font-weight: 700;
+  white-space: nowrap;
 }
 .arch-group-chip {
   width: var(--group-chip-size);
@@ -474,7 +508,7 @@ body {
   width: 100%;
   height: 100%;
 }
-.arch-group--accent > .arch-group-label {
+.arch-group--accent .arch-group-label {
   color: var(--node-accent, var(--text-dim));
 }
 

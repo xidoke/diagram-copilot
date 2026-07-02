@@ -8,6 +8,15 @@ export const ARCH_NODE_TYPE = "archNode";
 export const ARCH_GROUP_TYPE = "archGroup";
 
 /**
+ * Drag handle for a group (DGC-71): React Flow only starts a group drag when
+ * the pointerdown lands on an element matching this selector — the group's
+ * title band (`ArchGroup`) — so the body stays free for pan/select/child-drag
+ * (drag-by-header, like FigJam sections). Kept in sync with `ArchGroup`'s
+ * title element class and the `.arch-group__title` CSS in `App.css`.
+ */
+export const ARCH_GROUP_DRAG_HANDLE = ".arch-group__title";
+
+/**
  * Drag clamp inside a group (DGC-69): keep a dragged child this many px off
  * the group's left/right/bottom borders…
  */
@@ -136,6 +145,10 @@ export function toFlow(doc: DiagramDoc, graph: PositionedGraph): { nodes: Node[]
 
   for (const g of graph.groups) {
     const m = meta.get(g.id);
+    // A nested group clamps into its parent just like a leaf does — the same
+    // title-band inset keeps it from covering the parent's border/title
+    // (reuses `childExtent`, DGC-69/T-POLISH). Root groups roam free.
+    const extent = g.parentId ? childExtent(g.parentId) : undefined;
     nodes.push({
       id: g.id,
       type: ARCH_GROUP_TYPE,
@@ -148,9 +161,14 @@ export function toFlow(doc: DiagramDoc, graph: PositionedGraph): { nodes: Node[]
         ...(m?.color !== undefined ? { color: m.color } : {}),
       } satisfies ArchNodeData,
       style: { width: g.width, height: g.height },
-      ...(g.parentId ? { parentId: g.parentId, extent: "parent" as const } : {}),
+      ...(g.parentId ? { parentId: g.parentId, extent: extent ?? ("parent" as const) } : {}),
+      // Groups drag by their title band only (DGC-71): the body is left to
+      // pan/select and to drag child nodes. Persisted as an override on drag
+      // stop — descendants ride along because their positions are
+      // parent-relative. Still non-selectable (body is a pan surface).
       selectable: false,
-      draggable: false,
+      draggable: true,
+      dragHandle: ARCH_GROUP_DRAG_HANDLE,
     });
   }
 

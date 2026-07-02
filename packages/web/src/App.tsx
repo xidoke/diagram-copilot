@@ -133,7 +133,9 @@ function DiagramCanvas() {
   useEffect(() => {
     setFlow({
       nodes: applyOverrides(base.nodes, overrides),
-      edges: markDirtyEdges(base.edges, overrides),
+      // Pass nodes so a dragged group also dirties edges touching its
+      // descendants / crossing its boundary (DGC-71 ancestor case).
+      edges: markDirtyEdges(base.edges, overrides, base.nodes),
     });
   }, [base, overrides]);
 
@@ -173,9 +175,11 @@ function DiagramCanvas() {
     }, LAYOUT_SAVE_DEBOUNCE_MS);
   }, []);
 
-  // Drop of a dragged leaf: record its position (React Flow reports it in the
-  // node's own frame — parent-relative for children, see overrides.ts) and
-  // persist the whole record, debounced.
+  // Drop of a dragged node OR group (DGC-71): record its position (React Flow
+  // reports it in the node's own frame — parent-relative for children, see
+  // overrides.ts) and persist the whole record, debounced. Groups key the same
+  // override map as leaves; the derive effect re-applies it and their
+  // descendants follow because their positions are parent-relative.
   const handleNodeDragStop = useCallback(
     (node: Node) => {
       if (!diagramName) return;
