@@ -19,6 +19,7 @@ import { createClientUpdateHandler } from "./client-updates.js";
 import { MCP_PATH, createOpenHandler } from "./http.js";
 import { createLayoutApiHandler } from "./layout-overrides.js";
 import { createNotesApiHandler, createNotesStore } from "./notes.js";
+import { createTemplatesApiHandler } from "./templates.js";
 import { createMcpHandler, type McpInfo } from "./mcp/handler.js";
 import { createSnapshotBroker } from "./mcp/snapshot-broker.js";
 import { createHistoryStore } from "./history/store.js";
@@ -201,6 +202,11 @@ async function main(): Promise<void> {
     // Per-diagram markdown notes API — reads/writes `<name>.notes.md` next to
     // each diagram (DGC-63). Same workspace the CLI just resolved.
     notesHandler: createNotesApiHandler(options.workspace),
+    // Template gallery API — "New from template ▸" in the picker (DGC-66/F6).
+    // Same mutable-watcher-ref pattern as `openHandler`: `use` needs the live
+    // watcher to create+activate the new diagram, so it reads `null` until
+    // `watcher` below is assigned.
+    templatesHandler: createTemplatesApiHandler(() => watcher ?? null),
     // Web ⌘Z / Undo button → same undo logic as the MCP tool, over HTTP (T31).
     undoHandler: createUndoApiHandler(() => watcher ?? null, () => history),
     // Client (drawer/canvas) update frames → workspace writes with origin

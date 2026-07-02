@@ -13,6 +13,7 @@ import { EXPORT_PATH, handleExportRequest } from "./export/save.js";
 import type { WorkspaceOps } from "./workspace/watcher.js";
 import { LAYOUT_API_PREFIX, type LayoutApiHandler } from "./layout-overrides.js";
 import { NOTES_API_PREFIX, type NotesApiHandler } from "./notes.js";
+import { TEMPLATES_API_PREFIX, type TemplatesApiHandler } from "./templates.js";
 import { UNDO_PATH } from "./history/http.js";
 
 /**
@@ -236,7 +237,9 @@ function sendFile(res: ServerResponse, method: string, filePath: string, size: n
  * validation, and the filesystem write. Same deal for `openHandler` at
  * {@link API_OPEN_PATH} (the diagram picker's "open" action, DGC-57/T36),
  * `apiHandler` for the layout-override sidecar (`/api/layout/:name`, T30),
- * and `undoHandler` for `POST /api/undo` (T31) — each owns its method policy.
+ * `undoHandler` for `POST /api/undo` (T31), and `templatesHandler` for the
+ * template gallery (`/api/templates`, `/api/templates/use`, DGC-66/F6) —
+ * each owns its method policy.
  */
 export function createRequestHandler(
   staticDir?: string,
@@ -246,6 +249,7 @@ export function createRequestHandler(
   apiHandler?: LayoutApiHandler,
   undoHandler?: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>,
   notesHandler?: NotesApiHandler,
+  templatesHandler?: TemplatesApiHandler,
 ): (req: IncomingMessage, res: ServerResponse) => void {
   return (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
@@ -283,6 +287,14 @@ export function createRequestHandler(
     // before the GET/HEAD-only guard below.
     if (notesHandler && url.pathname.startsWith(NOTES_API_PREFIX)) {
       void notesHandler(req, res);
+      return;
+    }
+
+    // Template gallery API (`/api/templates`, `/api/templates/use`, DGC-66/F6).
+    // Same placement rationale as notes/layout — its POST route (`use`) must
+    // reach it before the GET/HEAD-only guard below.
+    if (templatesHandler && url.pathname.startsWith(TEMPLATES_API_PREFIX)) {
+      void templatesHandler(req, res);
       return;
     }
 
