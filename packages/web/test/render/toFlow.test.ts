@@ -3,6 +3,7 @@ import type { DiagramDoc } from "@diagram-copilot/core";
 import type { PositionedGraph } from "@diagram-copilot/layout";
 import { ELK_EDGE_TYPE } from "../../src/render/ElkEdge.js";
 import {
+  ARCH_GROUP_DRAG_HANDLE,
   ARCH_GROUP_TYPE,
   ARCH_NODE_TYPE,
   GROUP_EXTENT_PADDING,
@@ -98,6 +99,16 @@ describe("toFlow", () => {
     const vpc = nodes.find((n) => n.id === "VPC");
     expect(vpc?.data.depth).toBe(0);
   });
+
+  it("makes a group draggable by its title band, still non-selectable (DGC-71)", () => {
+    const { nodes } = toFlow(doc, graph);
+    const vpc = nodes.find((n) => n.id === "VPC");
+    expect(vpc?.draggable).toBe(true);
+    expect(vpc?.dragHandle).toBe(ARCH_GROUP_DRAG_HANDLE);
+    expect(vpc?.selectable).toBe(false);
+    // A root group roams free (no extent clamp).
+    expect(vpc?.extent).toBeUndefined();
+  });
 });
 
 describe("toFlow — nested group depth", () => {
@@ -141,6 +152,28 @@ describe("toFlow — nested group depth", () => {
       [GROUP_EXTENT_PADDING, GROUP_TITLE_BAND],
       [180 - GROUP_EXTENT_PADDING, 100 - GROUP_EXTENT_PADDING],
     ]);
+  });
+
+  it("clamps a nested GROUP to its parent's padded/title-band box (DGC-71)", () => {
+    const { nodes } = toFlow(nestedDoc, nestedGraph);
+    // Mid inside Outer (300×220): same title-band clamp as a leaf, relative to
+    // Outer — so a dragged inner group can't cover the parent's border/title.
+    const mid = nodes.find((n) => n.id === "Mid");
+    expect(mid?.parentId).toBe("Outer");
+    expect(mid?.draggable).toBe(true);
+    expect(mid?.dragHandle).toBe(ARCH_GROUP_DRAG_HANDLE);
+    expect(mid?.extent).toEqual([
+      [GROUP_EXTENT_PADDING, GROUP_TITLE_BAND],
+      [300 - GROUP_EXTENT_PADDING, 220 - GROUP_EXTENT_PADDING],
+    ]);
+    // Inner inside Mid (240×160).
+    const inner = nodes.find((n) => n.id === "Inner");
+    expect(inner?.extent).toEqual([
+      [GROUP_EXTENT_PADDING, GROUP_TITLE_BAND],
+      [240 - GROUP_EXTENT_PADDING, 160 - GROUP_EXTENT_PADDING],
+    ]);
+    // Root group (Outer) roams free.
+    expect(nodes.find((n) => n.id === "Outer")?.extent).toBeUndefined();
   });
 });
 

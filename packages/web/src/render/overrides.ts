@@ -8,12 +8,12 @@
  * its `parentId` group, or absolute canvas coordinates for a root-level node.
  * React Flow keeps a child's `position` parent-relative and reports it that way
  * from `onNodeDragStop`, so a dragged position is stored and re-applied
- * verbatim, with no conversion. Only leaf nodes are draggable (groups keep
- * `draggable: false`), so in practice only leaf positions are ever overridden.
+ * verbatim, with no conversion. Both leaf nodes and groups are draggable
+ * (DGC-71: groups by their title band), so an override may key a leaf, a
+ * root node, or a group — all handled identically since the frame is the same.
  */
 import type { Edge, Node } from "@xyflow/react";
 import type { LayoutOverrides } from "@diagram-copilot/core";
-import { ARCH_GROUP_TYPE } from "./toFlow.js";
 
 /** CSS class marking a node pinned to a manual position (see `App.css`). */
 export const PINNED_CLASS = "arch-node--pinned";
@@ -71,13 +71,13 @@ export async function deleteOverrides(name: string): Promise<void> {
 /**
  * Pure merge: return a new node array where every node whose id has a saved
  * override takes that override's position and gains the {@link PINNED_CLASS}
- * marker; all other nodes are returned unchanged. Group nodes are never
- * overridden (only leaf/root nodes are draggable), and override ids with no
+ * marker; all other nodes are returned unchanged. Applies to leaves, root
+ * nodes, and groups alike (DGC-71 — a dragged group's descendants ride along
+ * for free because their positions are parent-relative). Override ids with no
  * matching node are ignored. Does not mutate the input.
  */
 export function applyOverrides(nodes: Node[], overrides: LayoutOverrides): Node[] {
   return nodes.map((node) => {
-    if (node.type === ARCH_GROUP_TYPE) return node;
     const position = overrides[node.id];
     if (!position) return node;
     const className = node.className
@@ -94,10 +94,41 @@ export function applyOverrides(nodes: Node[], overrides: LayoutOverrides): Node[
  * endpoint is pinned elsewhere the static route is meaningless and `ElkEdge`
  * must draw a live smoothstep instead. Pure: edges whose flag already matches
  * are returned unchanged (base edges carry no flag, which reads as `false`).
+ *
+ * ANCESTOR CASE (DGC-71): dragging a group moves all its descendants (their
+ * positions are parent-relative), so an ELK route touching a descendant — or
+ * one crossing the group's boundary — is stale even though the descendant's
+ * own id has no override. Pass `nodes` and an endpoint is considered
+ * overridden when the endpoint itself OR any ancestor group in its `parentId`
+ * chain has an override. Called without `nodes`, it degrades to the original
+ * endpoint-only check (kept for existing 2-arg callers/tests).
  */
-export function markDirtyEdges(edges: Edge[], overrides: LayoutOverrides): Edge[] {
+export function markDirtyEdges(
+  edges: Edge[],
+  overrides: LayoutOverrides,
+  nodes?: Node[],
+): Edge[] {
+  // Map each node id → its parent id (undefined for root) so we can walk the
+  // ancestry chain. Built once per call from the current node array.
+  const parentOf = new Map<string, string | undefined>();
+  if (nodes) for (const n of nodes) parentOf.set(n.id, n.parentId);
+
+  // Is `id` — or any group above it — pinned? Walks the parentId chain (the
+  // model guarantees it is acyclic; a visited guard makes it safe regardless).
+  const overriddenWithAncestors = (id: string): boolean => {
+    let cur: string | undefined = id;
+    const seen = new Set<string>();
+    while (cur !== undefined && !seen.has(cur)) {
+      if (overrides[cur] !== undefined) return true;
+      seen.add(cur);
+      cur = parentOf.get(cur);
+    }
+    return false;
+  };
+
   return edges.map((edge) => {
-    const dirty = overrides[edge.source] !== undefined || overrides[edge.target] !== undefined;
+    const dirty =
+      overriddenWithAncestors(edge.source) || overriddenWithAncestors(edge.target);
     if (Boolean(edge.data?.dirtyEndpoints) === dirty) return edge;
     return { ...edge, data: { ...edge.data, dirtyEndpoints: dirty } };
   });

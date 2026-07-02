@@ -43,11 +43,11 @@ describe("applyOverrides", () => {
     expect(out.every((n) => !n.className?.includes(PINNED_CLASS))).toBe(true);
   });
 
-  it("never overrides a group node, even if its id is present", () => {
+  it("overrides a group node too (DGC-71 — groups drag by their title band)", () => {
     const out = applyOverrides(fixtureNodes(), { VPC: { x: 1, y: 1 } });
     const vpc = out.find((n) => n.id === "VPC");
-    expect(vpc?.position).toEqual({ x: 200, y: 0 });
-    expect(vpc?.className).toBeUndefined();
+    expect(vpc?.position).toEqual({ x: 1, y: 1 });
+    expect(vpc?.className).toContain(PINNED_CLASS);
   });
 
   it("leaves non-overridden nodes unchanged and does not mutate the input", () => {
@@ -125,5 +125,39 @@ describe("markDirtyEdges (DGC-69)", () => {
       labelPos: { x: 5, y: 6 },
     });
     expect(out[0].data?.sections).toEqual(edges[0].data?.sections);
+  });
+});
+
+describe("markDirtyEdges — ancestor (group) case (DGC-71)", () => {
+  // Outer group ▸ Mid group ▸ DB leaf; Ext/Ext2 are root leaves outside Outer.
+  const nodes: Node[] = [
+    { id: "Outer", type: ARCH_GROUP_TYPE, position: { x: 0, y: 0 }, data: {} },
+    { id: "Mid", type: ARCH_GROUP_TYPE, position: { x: 10, y: 10 }, parentId: "Outer", data: {} },
+    { id: "DB", type: ARCH_NODE_TYPE, position: { x: 5, y: 40 }, parentId: "Mid", data: {} },
+    { id: "Ext", type: ARCH_NODE_TYPE, position: { x: 500, y: 0 }, data: {} },
+  ];
+  const edges = (): Edge[] => [
+    { id: "cross", source: "Ext", target: "DB", data: { sections: [] } },
+    { id: "far", source: "Ext", target: "Ext2", data: { sections: [] } },
+  ];
+  const dirtyOf = (out: Edge[], id: string) =>
+    Boolean(out.find((e) => e.id === id)?.data?.dirtyEndpoints);
+
+  it("flags a boundary-crossing edge when a grand-ancestor group is dragged", () => {
+    const out = markDirtyEdges(edges(), { Outer: { x: 9, y: 9 } }, nodes);
+    // DB is Outer ▸ Mid ▸ DB, so the Ext→DB edge's ELK route is stale.
+    expect(dirtyOf(out, "cross")).toBe(true);
+    // The Ext→Ext2 edge touches nothing under Outer → stays clean.
+    expect(dirtyOf(out, "far")).toBe(false);
+  });
+
+  it("also flags when the intermediate (Mid) group is the one dragged", () => {
+    const out = markDirtyEdges(edges(), { Mid: { x: 9, y: 9 } }, nodes);
+    expect(dirtyOf(out, "cross")).toBe(true);
+  });
+
+  it("without a nodes arg, ancestry is ignored (endpoint-only, back-compat)", () => {
+    const out = markDirtyEdges(edges(), { Outer: { x: 9, y: 9 } });
+    expect(dirtyOf(out, "cross")).toBe(false);
   });
 });
