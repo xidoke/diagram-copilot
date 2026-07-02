@@ -23,6 +23,7 @@ import { StatusPill } from "./components/StatusPill.js";
 import { Toolbar } from "./components/Toolbar.js";
 import { UndoButton } from "./components/UndoButton.js";
 import { Drawer } from "./components/Drawer.js";
+import { NotesPanel } from "./components/NotesPanel.js";
 import { useDiagramConnection } from "./connection/index.js";
 import { applyPrefs, loadLayoutPrefs, saveLayoutPrefs, type LayoutPrefs } from "./render/layoutOptions.js";
 import { setSnapshotProvider } from "./render/snapshotResponder.js";
@@ -67,6 +68,8 @@ function DiagramCanvas() {
   const diagramName = lastDiagram?.name ?? null;
   const [drawerOpen, setDrawerOpen] = useState(false);
   const toggleDrawer = useCallback(() => setDrawerOpen((o) => !o), []);
+  const [notesOpen, setNotesOpen] = useState(false);
+  const toggleNotes = useCallback(() => setNotesOpen((o) => !o), []);
   // Bottom-right "⋯ layout" chip — on only while a layout pass is running
   // past LAYOUT_INDICATOR_DELAY_MS (see the layout effect below).
   const [layingOut, setLayingOut] = useState(false);
@@ -267,6 +270,7 @@ function DiagramCanvas() {
       <StatusPill status={status} />
       <UndoButton name={lastDiagram?.name ?? null} />
       <Drawer open={drawerOpen} onToggle={toggleDrawer} diagram={lastDiagram} send={send} lastError={lastError} />
+      <NotesPanel open={notesOpen} onToggle={toggleNotes} name={diagramName} />
     </div>
   );
 }

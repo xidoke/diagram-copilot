@@ -18,6 +18,7 @@ import { createServer, WELCOME_WORKSPACE, WS_PATH } from "./server.js";
 import { createClientUpdateHandler } from "./client-updates.js";
 import { MCP_PATH, createOpenHandler } from "./http.js";
 import { createLayoutApiHandler } from "./layout-overrides.js";
+import { createNotesApiHandler, createNotesStore } from "./notes.js";
 import { createMcpHandler, type McpInfo } from "./mcp/handler.js";
 import { createSnapshotBroker } from "./mcp/snapshot-broker.js";
 import { createHistoryStore } from "./history/store.js";
@@ -134,6 +135,11 @@ async function main(): Promise<void> {
   // snapshot-response route (resolve).
   const snapshotBroker = createSnapshotBroker();
 
+  // Per-diagram markdown notes (DGC-63): one store bound to the workspace dir,
+  // shared by the MCP tools (get_notes/set_notes) and the `/api/notes/:name`
+  // HTTP handler below so both go through the same sanitize + 1 MB cap.
+  const notesStore = createNotesStore(options.workspace);
+
   const server = createServer({
     port: options.port,
     staticDir: resolveStaticDir(),
@@ -156,12 +162,17 @@ async function main(): Promise<void> {
         getActive: () => watcher?.getState().active ?? null,
       },
       getHistory: () => history,
+      // Notes read/write store for get_notes/set_notes (DGC-63).
+      notes: notesStore,
     }),
     // `POST /api/open` (T36 / DGC-57) — diagram picker's open/create action.
     openHandler: createOpenHandler(() => watcher ?? null),
     // Layout-override sidecar API — reads/writes `<name>.layout.json` next to
     // each diagram in the workspace the CLI just resolved.
     apiHandler: createLayoutApiHandler(options.workspace),
+    // Per-diagram markdown notes API — reads/writes `<name>.notes.md` next to
+    // each diagram (DGC-63). Same workspace the CLI just resolved.
+    notesHandler: createNotesApiHandler(options.workspace),
     // Web ⌘Z / Undo button → same undo logic as the MCP tool, over HTTP (T31).
     undoHandler: createUndoApiHandler(() => watcher ?? null, () => history),
     // Client (drawer/canvas) update frames → workspace writes with origin
