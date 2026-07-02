@@ -146,3 +146,8 @@ Publish sơ đồ thành web page tĩnh share được · template/community gal
 | v0.4 Daily Driver | 🟡 gần xong | drawer Monaco+highlight+markers, picker, export client+server, drag overrides, undo/redo, empty state. **Chờ T32 dogfood — Đô dùng thật** |
 | v0.5 Learning Pack | 🟡 một phần | snapshot_diagram tool ✅, tsx watch ✅, T-FIX ✅; còn steps navigation UI + polish pass |
 | v1.0 Prod-grade | 🟡 bắt đầu | CI workflow ✅ (chờ push GitHub); T38 packaging đang chạy; còn npx+README GIF+license pass |
+
+## 8. Horizon hiện tại (PO update 2026-07-02, strategic loop #4)
+- **Đang bay 6 worker:** T-POLISH (3 bug dogfood DnD/label — gate T17 re-review) · DGC-17 DSL printer (nền v1.2, kéo lên sớm vì core lane rảnh + là hướng đúng thay sidecar) · F4 minimap+search · F5 trash/rename · F6 templates · T-THEME light.
+- **Quyết định PO:** Mermaid secondary types TIẾP TỤC hoãn (giá trị < chuỗi learning/visual-editing, không chặn gì). v1.2 khởi động bằng printer (khó nhất trước).
+- **Gates còn lại cho v1.0:** T17 re-review sau polish (mắt Đô) · T32 dogfood (Đô) · confirm LICENSE MIT · GIF demo README.
