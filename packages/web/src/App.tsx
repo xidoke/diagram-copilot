@@ -20,6 +20,7 @@ import { EmptyState, shouldShowEmptyState } from "./components/EmptyState.js";
 import { ExportMenu } from "./components/ExportMenu.js";
 import { Picker } from "./components/Picker.js";
 import { StatusPill } from "./components/StatusPill.js";
+import { StepsNav } from "./components/StepsNav.js";
 import { Toolbar } from "./components/Toolbar.js";
 import { UndoButton } from "./components/UndoButton.js";
 import { Drawer } from "./components/Drawer.js";
@@ -265,6 +266,7 @@ function DiagramCanvas() {
         </div>
       )}
       <StatusPill status={status} />
+      <StepsNav workspace={workspace} />
       <UndoButton name={lastDiagram?.name ?? null} />
       <Drawer open={drawerOpen} onToggle={toggleDrawer} diagram={lastDiagram} send={send} lastError={lastError} />
     </div>
