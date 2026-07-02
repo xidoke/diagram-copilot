@@ -30,6 +30,7 @@ import type { WorkspaceOps } from "../workspace/watcher.js";
 import type { HistoryStore } from "../history/store.js";
 import { registerWorkspaceTools } from "./tools/workspace.js";
 import { registerDiagramTools } from "./tools/diagram.js";
+import { registerDiffDiagramTool } from "./tools/diff.js";
 import { registerSnapshotDiagramTool } from "./tools/snapshot-steps.js";
 import { registerSnapshotTool, type SnapshotOps } from "./tools/snapshot.js";
 import { registerHistoryTools } from "./tools/history.js";
@@ -157,6 +158,9 @@ function registerTools(server: McpServer, options: McpHandlerOptions): void {
     if (options.getLifecycle !== undefined) {
       registerLifecycleTools(server, options.getLifecycle);
     }
+    // diff_diagram (DGC-74) — read-only structural diff of two saved diagrams;
+    // needs only the workspace to read/parse both, so no extra wiring.
+    registerDiffDiagramTool(server, options.getWorkspace);
   }
 
   // Canvas-rendered PNG snapshots (T24) — needs the WS hub, so it plugs in
