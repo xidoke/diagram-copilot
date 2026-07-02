@@ -44,9 +44,11 @@ export interface ToolbarProps {
    * → the reset button is hidden (e.g. before any diagram is loaded).
    */
   onResetLayout?: () => void;
+  /** Enter present mode (DGC-73) — the ▶ button; also bound to ⌘⇧P. */
+  onPresent?: () => void;
 }
 
-export function Toolbar({ prefs, onChange, onResetLayout }: ToolbarProps) {
+export function Toolbar({ prefs, onChange, onResetLayout, onPresent }: ToolbarProps) {
   const { theme, toggleTheme } = useTheme();
   return (
     <div className="toolbar">
@@ -117,6 +119,17 @@ export function Toolbar({ prefs, onChange, onResetLayout }: ToolbarProps) {
         >
           {theme === "dark" ? "☀" : "🌙"}
         </button>
+        {onPresent && (
+          <button
+            type="button"
+            title="Present mode · ⌘⇧P"
+            aria-label="Enter present mode"
+            className="toolbar-btn"
+            onClick={onPresent}
+          >
+            ▶
+          </button>
+        )}
       </div>
     </div>
   );
