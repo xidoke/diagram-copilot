@@ -6,3 +6,19 @@
  * committed so downstream packages build without running codegen.
  */
 export { parseDsl, type ParseDslResult } from "./parse.js";
+
+// DSL printer + minimal-diff doc edits (DGC-17) — DiagramDoc → DSL text.
+export {
+  addEdge,
+  addNode,
+  applyDocEdit,
+  moveToGroup,
+  printDsl,
+  removeElement,
+  renameElement,
+  setAttr,
+  type ApplyDocEditOptions,
+  type ElementAttrKey,
+  type NewEdgeSpec,
+  type NewNodeSpec,
+} from "./print/index.js";

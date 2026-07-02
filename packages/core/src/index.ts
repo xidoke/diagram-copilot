@@ -29,6 +29,25 @@ export {
 // DSL parser (DGC-26) — eraser-style DSL → DiagramDoc
 export { parseDsl, type ParseDslResult } from "./dsl/index.js";
 
+// DSL printer + minimal-diff doc edits (DGC-17) — DiagramDoc → DSL text.
+// Foundation for v1.2 visual editing: `printDsl` renders a canonical document,
+// `applyDocEdit` rewrites existing text preserving comments/order/bytes of
+// everything unchanged, and the primitives wrap single canvas gestures.
+export {
+  addEdge,
+  addNode,
+  applyDocEdit,
+  moveToGroup,
+  printDsl,
+  removeElement,
+  renameElement,
+  setAttr,
+  type ApplyDocEditOptions,
+  type ElementAttrKey,
+  type NewEdgeSpec,
+  type NewNodeSpec,
+} from "./dsl/index.js";
+
 // Shared error shapes
 export {
   ModelErrorSchema,
