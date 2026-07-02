@@ -20,7 +20,8 @@ export type {
   PositionedNode,
 } from "./types.js";
 
-// Node sizing — exported so the renderer (T12) can reproduce the exact box.
+// Node/edge-label sizing — exported so the renderer (T12) can reproduce the
+// exact boxes ELK laid out with.
 export {
   NODE_HEIGHT,
   NODE_MIN_WIDTH,
@@ -28,7 +29,11 @@ export {
   NODE_HORIZONTAL_PADDING,
   NODE_ICON_WIDTH,
   NODE_CHAR_WIDTH,
+  EDGE_LABEL_HEIGHT,
+  EDGE_LABEL_CHAR_WIDTH,
+  EDGE_LABEL_HORIZONTAL_PADDING,
   measureNode,
+  measureEdgeLabel,
 } from "./sizing.js";
 
 // Spacing presets / direction mapping — exported for tooling and tests.

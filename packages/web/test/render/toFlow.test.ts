@@ -2,7 +2,14 @@ import { describe, expect, it } from "vitest";
 import type { DiagramDoc } from "@diagram-copilot/core";
 import type { PositionedGraph } from "@diagram-copilot/layout";
 import { ELK_EDGE_TYPE } from "../../src/render/ElkEdge.js";
-import { ARCH_GROUP_TYPE, ARCH_NODE_TYPE, toFlow } from "../../src/render/toFlow.js";
+import {
+  ARCH_GROUP_TYPE,
+  ARCH_NODE_TYPE,
+  GROUP_EXTENT_PADDING,
+  GROUP_TITLE_BAND,
+  HANDLE_RIM_OFFSET,
+  toFlow,
+} from "../../src/render/toFlow.js";
 
 const doc: DiagramDoc = {
   type: "architecture",
@@ -40,9 +47,15 @@ describe("toFlow", () => {
     expect(nodes.map((n) => n.type)).toEqual([ARCH_GROUP_TYPE, ARCH_NODE_TYPE, ARCH_NODE_TYPE]);
     const api = nodes.find((n) => n.id === "API");
     expect(api?.parentId).toBe("VPC");
-    expect(api?.extent).toBe("parent");
+    // Padded drag clamp (DGC-69): parent-relative, VPC is 180×120 — the top
+    // inset is the title band, the other sides the plain border padding.
+    expect(api?.extent).toEqual([
+      [GROUP_EXTENT_PADDING, GROUP_TITLE_BAND],
+      [180 - GROUP_EXTENT_PADDING, 120 - GROUP_EXTENT_PADDING],
+    ]);
     const client = nodes.find((n) => n.id === "Client");
     expect(client?.parentId).toBeUndefined();
+    expect(client?.extent).toBeUndefined();
   });
 
   it("carries labels from the doc and sizes from layout", () => {
@@ -119,6 +132,16 @@ describe("toFlow — nested group depth", () => {
     expect(depthOf("Mid")).toBe(1);
     expect(depthOf("Inner")).toBe(2);
   });
+
+  it("clamps a nested leaf to its immediate parent's padded box", () => {
+    const { nodes } = toFlow(nestedDoc, nestedGraph);
+    const db = nodes.find((n) => n.id === "DB");
+    // Inner is 180×100 — the extent is relative to Inner, not to the root.
+    expect(db?.extent).toEqual([
+      [GROUP_EXTENT_PADDING, GROUP_TITLE_BAND],
+      [180 - GROUP_EXTENT_PADDING, 100 - GROUP_EXTENT_PADDING],
+    ]);
+  });
 });
 
 describe("toFlow — edge targeting a group", () => {
@@ -172,6 +195,34 @@ describe("toFlow — ELK bend-point edges (T15)", () => {
     expect(edges[0].data?.sections).toEqual([
       { startPoint: { x: 130, y: 44 }, endPoint: { x: 218, y: 58 } },
     ]);
+  });
+
+  it("attaches layout-time handle anchors for the drift detector (DGC-69)", () => {
+    // Direction "right": source anchor sits HANDLE_RIM_OFFSET outside the
+    // FROM box's right border (centered vertically), target anchor the same
+    // outside the TO box's left border — in ABSOLUTE coords (API is
+    // parent-relative at (18, 34) inside VPC at (200, 0)).
+    const { edges } = toFlow(doc, graph);
+    expect(edges[0].data?.staticSource).toEqual({
+      x: 10 + 120 + HANDLE_RIM_OFFSET,
+      y: 20 + 24,
+    }); // Client
+    expect(edges[0].data?.staticTarget).toEqual({
+      x: 200 + 18 - HANDLE_RIM_OFFSET,
+      y: 34 + 24,
+    }); // API abs
+  });
+
+  it("passes ELK's labelPos through onto the edge data", () => {
+    const labeledGraph: PositionedGraph = {
+      ...graph,
+      edges: [{ ...graph.edges[0], labelPos: { x: 174, y: 40 } }],
+    };
+    const { edges } = toFlow(doc, labeledGraph);
+    expect(edges[0].data?.labelPos).toEqual({ x: 174, y: 40 });
+    // …and omits the key entirely when layout reported none.
+    const { edges: plain } = toFlow(doc, graph);
+    expect("labelPos" in (plain[0].data ?? {})).toBe(false);
   });
 
   it("keeps bendPoints intact on the edge data", () => {

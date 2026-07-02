@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { Node } from "@xyflow/react";
+import type { Edge, Node } from "@xyflow/react";
 import type { LayoutOverrides } from "@diagram-copilot/core";
 import { ARCH_GROUP_TYPE, ARCH_NODE_TYPE } from "../../src/render/toFlow.js";
-import { applyOverrides, PINNED_CLASS } from "../../src/render/overrides.js";
+import { applyOverrides, markDirtyEdges, PINNED_CLASS } from "../../src/render/overrides.js";
 
 /** A minimal leaf/group node array mirroring what `toFlow` produces. */
 function fixtureNodes(): Node[] {
@@ -64,5 +64,66 @@ describe("applyOverrides", () => {
     const nodes = fixtureNodes();
     const out = applyOverrides(nodes, {});
     expect(out.map((n) => n.position)).toEqual(nodes.map((n) => n.position));
+  });
+});
+
+/** Minimal elk edges mirroring what `toFlow` produces (no dirty flag yet). */
+function fixtureEdges(): Edge[] {
+  return [
+    { id: "e1", source: "Client", target: "API", data: { sections: [] } },
+    { id: "e2", source: "API", target: "DB", data: { sections: [] } },
+  ];
+}
+
+describe("markDirtyEdges (DGC-69)", () => {
+  it("flags an edge whose SOURCE has an override", () => {
+    const out = markDirtyEdges(fixtureEdges(), { Client: { x: 1, y: 2 } });
+    expect(out[0].data?.dirtyEndpoints).toBe(true);
+    expect(Boolean(out[1].data?.dirtyEndpoints)).toBe(false);
+  });
+
+  it("flags an edge whose TARGET has an override", () => {
+    const out = markDirtyEdges(fixtureEdges(), { DB: { x: 1, y: 2 } });
+    expect(Boolean(out[0].data?.dirtyEndpoints)).toBe(false);
+    expect(out[1].data?.dirtyEndpoints).toBe(true);
+  });
+
+  it("flags both edges touching an overridden shared endpoint", () => {
+    const out = markDirtyEdges(fixtureEdges(), { API: { x: 1, y: 2 } });
+    expect(out[0].data?.dirtyEndpoints).toBe(true);
+    expect(out[1].data?.dirtyEndpoints).toBe(true);
+  });
+
+  it("clears the flag once the overrides are gone (reset layout)", () => {
+    const dirty = markDirtyEdges(fixtureEdges(), { API: { x: 1, y: 2 } });
+    const clean = markDirtyEdges(dirty, {});
+    expect(clean.every((e) => e.data?.dirtyEndpoints === false)).toBe(true);
+  });
+
+  it("keeps edge identity when the flag already matches, and never mutates", () => {
+    const edges = fixtureEdges();
+    const snapshot = JSON.parse(JSON.stringify(edges));
+    const out = markDirtyEdges(edges, {});
+    expect(out[0]).toBe(edges[0]); // unflagged → unchanged object
+    expect(out[1]).toBe(edges[1]);
+    markDirtyEdges(edges, { API: { x: 1, y: 2 } });
+    expect(edges).toEqual(snapshot); // input untouched
+  });
+
+  it("preserves the rest of the edge data when flagging", () => {
+    const edges: Edge[] = [
+      {
+        id: "e1",
+        source: "a",
+        target: "b",
+        data: { sections: [{ startPoint: { x: 0, y: 0 }, endPoint: { x: 1, y: 1 } }], labelPos: { x: 5, y: 6 } },
+      },
+    ];
+    const out = markDirtyEdges(edges, { a: { x: 9, y: 9 } });
+    expect(out[0].data).toMatchObject({
+      dirtyEndpoints: true,
+      labelPos: { x: 5, y: 6 },
+    });
+    expect(out[0].data?.sections).toEqual(edges[0].data?.sections);
   });
 });

@@ -30,7 +30,7 @@ import { setSnapshotProvider } from "./render/snapshotResponder.js";
 import { ArchGroup, ArchNode } from "./render/ArchNode.js";
 import { ELK_EDGE_TYPE, ElkEdge, ElkEdgeMarkerDefs } from "./render/ElkEdge.js";
 import { ARCH_GROUP_TYPE, ARCH_NODE_TYPE, toFlow } from "./render/toFlow.js";
-import { applyOverrides, deleteOverrides, fetchOverrides, putOverrides } from "./render/overrides.js";
+import { applyOverrides, deleteOverrides, fetchOverrides, markDirtyEdges, putOverrides } from "./render/overrides.js";
 
 export const APP_TITLE = "diagram-copilot";
 
@@ -113,9 +113,14 @@ function DiagramCanvas() {
 
   // Fold saved overrides onto the freshly auto-laid-out base. Runs on a
   // re-layout (`base`) and whenever `overrides` change (fetch / drag / reset) —
-  // never re-running ELK, which the layout effect above owns.
+  // never re-running ELK, which the layout effect above owns. Edges whose
+  // endpoint is overridden are flagged dirty so ElkEdge stops trusting the
+  // stale ELK route and follows the live handles instead (DGC-69).
   useEffect(() => {
-    setFlow({ nodes: applyOverrides(base.nodes, overrides), edges: base.edges });
+    setFlow({
+      nodes: applyOverrides(base.nodes, overrides),
+      edges: markDirtyEdges(base.edges, overrides),
+    });
   }, [base, overrides]);
 
   // Load the manual overrides for whichever diagram just became active. Cleared

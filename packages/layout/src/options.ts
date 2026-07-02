@@ -94,6 +94,12 @@ export function rootLayoutOptions(
     "elk.layered.spacing.nodeNodeBetweenLayers": String(preset.nodeNodeBetweenLayers),
     "elk.spacing.nodeNode": String(preset.nodeNode),
     "elk.layered.spacing.edgeNodeBetweenLayers": String(preset.edgeNodeBetweenLayers),
+    // Edge labels are ELK-native (DGC-69): labels enter the layered router as
+    // real boxes (see measureEdgeLabel), so ELK widens layer gaps to fit them.
+    // SMART_DOWN (the documented default, pinned here on the *registered* id —
+    // the `elk.edgeLabels.…` spelling is silently ignored) picks the side of
+    // the edge with fewer conflicts, defaulting to below.
+    "elk.layered.edgeLabels.sideSelection": "SMART_DOWN",
     "elk.padding": elkPadding(preset.rootPadding),
   };
 }

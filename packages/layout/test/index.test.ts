@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import { validateDoc, type DiagramDoc, type Direction } from "@diagram-copilot/core";
 import {
   layoutDiagram,
+  measureEdgeLabel,
   measureNode,
+  EDGE_LABEL_CHAR_WIDTH,
+  EDGE_LABEL_HEIGHT,
+  EDGE_LABEL_HORIZONTAL_PADDING,
   NODE_HEIGHT,
   SPACING_PRESETS,
   type PositionedGraph,
@@ -225,6 +229,77 @@ describe("layoutDiagram — edge sections in true absolute coords (DGC-53)", () 
     const last = e1.sections[e1.sections.length - 1]!;
     expect(within(first.startPoint, bounds.get("client")!)).toBe(true);
     expect(within(last.endPoint, bounds.get("cdn")!)).toBe(true);
+  });
+});
+
+describe("layoutDiagram — ELK-native edge labels (DGC-69)", () => {
+  it("estimates the label box from the char-count heuristic", () => {
+    expect(measureEdgeLabel("cache")).toEqual({
+      width: 5 * EDGE_LABEL_CHAR_WIDTH + EDGE_LABEL_HORIZONTAL_PADDING,
+      height: EDGE_LABEL_HEIGHT,
+    });
+  });
+
+  it("reports a finite labelPos for labeled edges only", async () => {
+    const graph = await layoutDiagram(fixtureDoc("right"));
+    for (const edge of graph.edges) {
+      if (edge.label !== undefined) {
+        expect(edge.labelPos).toBeDefined();
+        expect(Number.isFinite(edge.labelPos!.x)).toBe(true);
+        expect(Number.isFinite(edge.labelPos!.y)).toBe(true);
+      } else {
+        expect(edge.labelPos).toBeUndefined();
+      }
+    }
+  });
+
+  it("keeps every label box clear of every node box (ELK reserved the room)", async () => {
+    const graph = await layoutDiagram(fixtureDoc("right"));
+    const bounds = absBoundsById(graph);
+    for (const edge of graph.edges) {
+      if (edge.label === undefined) continue;
+      const { width, height } = measureEdgeLabel(edge.label);
+      const label = {
+        minX: edge.labelPos!.x - width / 2,
+        minY: edge.labelPos!.y - height / 2,
+        maxX: edge.labelPos!.x + width / 2,
+        maxY: edge.labelPos!.y + height / 2,
+      };
+      for (const node of graph.nodes) {
+        const b = bounds.get(node.id)!;
+        const overlaps =
+          label.minX < b.maxX - EPS &&
+          label.maxX > b.minX + EPS &&
+          label.minY < b.maxY - EPS &&
+          label.maxY > b.minY + EPS;
+        expect(overlaps, `label "${edge.label}" overlaps node ${node.id}`).toBe(false);
+      }
+    }
+  });
+
+  it("keeps sibling label boxes clear of each other", async () => {
+    const graph = await layoutDiagram(fixtureDoc("right"));
+    const boxes = graph.edges
+      .filter((e) => e.label !== undefined)
+      .map((e) => {
+        const { width, height } = measureEdgeLabel(e.label!);
+        return {
+          id: e.id,
+          minX: e.labelPos!.x - width / 2,
+          minY: e.labelPos!.y - height / 2,
+          maxX: e.labelPos!.x + width / 2,
+          maxY: e.labelPos!.y + height / 2,
+        };
+      });
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        const a = boxes[i]!;
+        const b = boxes[j]!;
+        const overlaps =
+          a.minX < b.maxX - EPS && a.maxX > b.minX + EPS && a.minY < b.maxY - EPS && a.maxY > b.minY + EPS;
+        expect(overlaps, `labels of ${a.id} and ${b.id} overlap`).toBe(false);
+      }
+    }
   });
 });
 

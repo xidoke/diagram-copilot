@@ -84,6 +84,13 @@ export interface PositionedEdge {
   /** Target node/group id. */
   to: string;
   label?: string;
+  /**
+   * Center of the label box ELK placed (absolute canvas coords, same frame as
+   * `sections`). ELK reserves the `measureEdgeLabel` box during routing, so
+   * rendering the label centered here never overlaps nodes. Absent when the
+   * edge has no label (or ELK reported no label position).
+   */
+  labelPos?: Point;
   /** ELK routing sections (absolute coords). Non-empty for a routed edge. */
   sections: PositionedEdgeSection[];
 }
