@@ -20,6 +20,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { WorkspaceMessage } from "@diagram-copilot/core";
 import { groupDiagrams } from "./Picker.js";
 import { isEditableTarget } from "./UndoButton.js";
+import { computeDiffOverlay, type DiffOverlay, type DiffSummary } from "../render/diffOverlay.js";
 
 /** An ordered evolution chain (`[base, step1, step2, …]`) and the active
  *  diagram's position within it. */
@@ -63,17 +64,68 @@ async function requestOpen(name: string): Promise<{ ok: boolean; error?: string 
   }
 }
 
+/** Human-readable `+N nodes · ~M changed · −K removed` parts for the Δ panel. */
+function summaryParts(s: DiffSummary): string[] {
+  const parts: string[] = [];
+  if (s.addedNodes) parts.push(`+${s.addedNodes} node${s.addedNodes === 1 ? "" : "s"}`);
+  if (s.addedEdges) parts.push(`+${s.addedEdges} edge${s.addedEdges === 1 ? "" : "s"}`);
+  if (s.changed) parts.push(`~${s.changed} changed`);
+  if (s.removed) parts.push(`−${s.removed} removed`);
+  return parts;
+}
+
 export interface StepsNavProps {
   /** Current workspace listing (diagrams + active) — `null` until the first WS frame arrives. */
   workspace: WorkspaceMessage | null;
+  /**
+   * Called with the computed diff overlay when Δ is toggled on (and `null` when
+   * off or when there's no previous step). The parent applies the class maps to
+   * the React Flow nodes/edges — see App.tsx's derive effect (DGC-79).
+   */
+  onDiffChange?: (overlay: DiffOverlay | null) => void;
 }
 
-export function StepsNav({ workspace }: StepsNavProps) {
+export function StepsNav({ workspace, onDiffChange }: StepsNavProps) {
   const [busy, setBusy] = useState(false);
-  const stepChain = buildStepChain(workspace?.diagrams ?? [], workspace?.active);
+  const [showDiff, setShowDiff] = useState(false);
+  const [overlay, setOverlay] = useState<DiffOverlay | null>(null);
+  const diagrams = workspace?.diagrams ?? [];
+  const active = workspace?.active ?? null;
+  const stepChain = buildStepChain(diagrams, active);
   const prevName = stepChain && stepChain.index > 0 ? stepChain.chain[stepChain.index - 1] : undefined;
   const nextName =
     stepChain && stepChain.index < stepChain.chain.length - 1 ? stepChain.chain[stepChain.index + 1] : undefined;
+
+  // Δ overlay: when enabled AND there's a previous step, fetch both steps' DSL,
+  // diff them, and push the result up to App (which paints the classes on the
+  // canvas). Disabled / no-prev-step clears it. Re-runs when the active diagram
+  // moves through the chain so the overlay always reflects the visible step.
+  useEffect(() => {
+    if (!showDiff || !prevName || !active) {
+      setOverlay(null);
+      onDiffChange?.(null);
+      return;
+    }
+    const controller = new AbortController();
+    let cancelled = false;
+    computeDiffOverlay(diagrams, active, controller.signal)
+      .then((next) => {
+        if (cancelled) return;
+        setOverlay(next);
+        onDiffChange?.(next);
+      })
+      .catch((err) => {
+        if ((err as Error).name !== "AbortError") console.warn("[steps-nav] diff failed:", err);
+      });
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+    // `diagrams` is only read to resolve the two step names, which `prevName` +
+    // `active` already capture — so they, not the fresh-each-render array, are
+    // the deps. (Same derived-value pattern as the keydown effect below.)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showDiff, prevName, active, onDiffChange]);
 
   const goTo = useCallback(
     (target: string | undefined) => {
@@ -107,29 +159,67 @@ export function StepsNav({ workspace }: StepsNavProps) {
 
   if (!stepChain) return null;
 
+  const parts = showDiff && overlay ? summaryParts(overlay.summary) : [];
+
   return (
-    <div className="steps-nav" role="navigation" aria-label="Diagram evolution steps">
-      <button
-        type="button"
-        className="steps-nav__btn"
-        aria-label="Previous step"
-        disabled={!prevName || busy}
-        onClick={() => goTo(prevName)}
-      >
-        ‹
-      </button>
-      <span className="steps-nav__label">
-        step {stepChain.index + 1}/{stepChain.chain.length}
-      </span>
-      <button
-        type="button"
-        className="steps-nav__btn"
-        aria-label="Next step"
-        disabled={!nextName || busy}
-        onClick={() => goTo(nextName)}
-      >
-        ›
-      </button>
-    </div>
+    <>
+      {/* Δ panel — what changed vs the previous step (DGC-79). Above the pill so
+          it clears the screen bottom; only while Δ is on and a prev step exists. */}
+      {showDiff && prevName && overlay && (
+        <div className="steps-diff" role="status" aria-label="Changes since previous step">
+          {overlay.summary.empty ? (
+            <span className="steps-diff__none">no changes vs previous step</span>
+          ) : (
+            <>
+              <span className="steps-diff__stats">{parts.join(" · ")}</span>
+              {overlay.summary.removedNames.length > 0 && (
+                <span
+                  className="steps-diff__removed"
+                  title={`Removed: ${overlay.summary.removedNames.join(", ")}`}
+                >
+                  ({overlay.summary.removedNames.join(", ")})
+                </span>
+              )}
+            </>
+          )}
+        </div>
+      )}
+      <div className="steps-nav" role="navigation" aria-label="Diagram evolution steps">
+        <button
+          type="button"
+          className="steps-nav__btn"
+          aria-label="Previous step"
+          disabled={!prevName || busy}
+          onClick={() => goTo(prevName)}
+        >
+          ‹
+        </button>
+        <span className="steps-nav__label">
+          step {stepChain.index + 1}/{stepChain.chain.length}
+        </span>
+        <button
+          type="button"
+          className="steps-nav__btn"
+          aria-label="Next step"
+          disabled={!nextName || busy}
+          onClick={() => goTo(nextName)}
+        >
+          ›
+        </button>
+        {/* Δ diff toggle — only meaningful once there's a previous step. */}
+        {prevName && (
+          <button
+            type="button"
+            className={`steps-nav__btn steps-nav__btn--diff${showDiff ? " steps-nav__btn--active" : ""}`}
+            aria-label="Toggle changes since previous step"
+            aria-pressed={showDiff}
+            title="Highlight what changed since the previous step"
+            onClick={() => setShowDiff((on) => !on)}
+          >
+            Δ
+          </button>
+        )}
+      </div>
+    </>
   );
 }

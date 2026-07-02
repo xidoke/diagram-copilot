@@ -314,6 +314,76 @@ body {
   text-align: center;
   letter-spacing: 0.01em;
 }
+/* Δ diff toggle (DGC-79) — active state tints it like the "added" accent so
+   it reads as "highlighting is on". */
+.steps-nav__btn--diff {
+  font-weight: 700;
+}
+.steps-nav__btn--active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft-bg);
+}
+
+/* Δ summary panel — floats just above the steps pill (bottom: 50px + pill
+   height + gap), centered like it. Lists what changed since the previous
+   step; removed elements show as a name list here rather than ghost nodes so
+   the ELK layout is never perturbed. */
+.steps-diff {
+  position: fixed;
+  bottom: 84px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 60vw;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel-translucent);
+  backdrop-filter: blur(6px);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.steps-diff__stats {
+  color: var(--text);
+  letter-spacing: 0.01em;
+}
+.steps-diff__removed {
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.steps-diff__none {
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+/* Diff overlay marks (DGC-79) — applied to the React Flow node wrapper / edge
+   group via the class maps in diffOverlay.ts. Added elements glow green,
+   attribute/label changes get an amber ring. Selectors mirror the pinned-node
+   pattern (class lands on `.react-flow__node`). */
+.react-flow__node.diff-added .arch-node,
+.react-flow__node.diff-added .arch-group {
+  box-shadow: var(--diff-added-glow);
+  border-color: var(--diff-added);
+}
+.react-flow__node.diff-changed .arch-node,
+.react-flow__node.diff-changed .arch-group {
+  box-shadow: var(--diff-changed-glow);
+  border-color: var(--diff-changed);
+}
+.react-flow__edge.diff-added .react-flow__edge-path {
+  stroke: var(--diff-added-stroke);
+  stroke-width: 2.2;
+}
+.react-flow__edge.diff-changed .react-flow__edge-path {
+  stroke: var(--diff-changed-stroke);
+  stroke-width: 2.2;
+}
 
 .react-flow__controls {
   filter: var(--controls-filter);

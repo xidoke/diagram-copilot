@@ -91,6 +91,16 @@
      into its CSS; theme B inverts them to fit the dark canvas. The light
      theme needs no correction. */
   --controls-filter: invert(0.9) hue-rotate(180deg);
+
+  /* Diff overlay (DGC-79) — the Δ toggle glows added elements green and rings
+     changed ones amber. Green shares the connected-status hue; amber is a new
+     warm accent. Both retuned for the light theme below. */
+  --diff-added: #28c840;
+  --diff-added-glow: 0 0 0 1.5px var(--diff-added), 0 0 16px rgba(40, 200, 64, 0.4);
+  --diff-added-stroke: #28c840;
+  --diff-changed: #e0a53a;
+  --diff-changed-glow: 0 0 0 1.5px var(--diff-changed), 0 0 12px rgba(224, 165, 58, 0.35);
+  --diff-changed-stroke: #e0a53a;
 }
 
 [data-theme="light"] {
@@ -145,4 +155,13 @@
   --accent-soft-bg: rgba(74, 125, 214, 0.12);
   --accent-soft-bg-hover: rgba(74, 125, 214, 0.2);
   --controls-filter: none;
+
+  /* Diff overlay — same hues retuned for contrast on a light surface (a softer
+     glow, darker ink so the ring/stroke reads on white). */
+  --diff-added: #1f9d46;
+  --diff-added-glow: 0 0 0 1.5px var(--diff-added), 0 0 12px rgba(31, 157, 70, 0.28);
+  --diff-added-stroke: #1f9d46;
+  --diff-changed: #b9791b;
+  --diff-changed-glow: 0 0 0 1.5px var(--diff-changed), 0 0 10px rgba(185, 121, 27, 0.25);
+  --diff-changed-stroke: #b9791b;
 }
