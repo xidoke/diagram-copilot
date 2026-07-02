@@ -2,8 +2,11 @@
  * Icon palette (DGC-77 / T-IPAL) — browse the whole @diagram-copilot/icons set
  * without leaving the app. The 🎨 trigger lives in the Toolbar (next to ▶
  * present); clicking it opens a searchable grid of every icon rendered with its
- * real glyph. Clicking an icon copies its DSL token — `[icon: <id>]` — to the
- * clipboard and flashes a small toast.
+ * real glyph. Clicking an icon inserts its DSL token — `[icon: <id>]` — at the
+ * Monaco cursor when the DSL drawer is open (T-VE3 / DGC-80, via the
+ * `drawerInsertRegistry` module-level registry); when the drawer is closed
+ * (nothing registered) it falls back to copying the token to the clipboard,
+ * same as before. Either way a small toast confirms what happened.
  *
  * The panel + toast are rendered through a portal to <body> so they escape the
  * Toolbar's `z-index` stacking context and paint above the other top-right
@@ -11,20 +14,19 @@
  * through the shared `--…` tokens (see iconPalette.css), same as the rest of the
  * floating UI.
  *
- * `filterIcons` / `buildIconEntries` are the pure, DOM-free half so they're
- * unit-testable on their own (matches the project's node-only vitest setup).
- * Diacritics handling is delegated to SearchBox's `normalize` (imported, not
- * copied) so "khong dau" queries still find accented names/aliases.
- *
- * Follow-up (out of scope here): when the Drawer's Monaco editor is open we
- * could insert the token at the cursor instead of only copying — for now every
- * click just copies to the clipboard regardless of Drawer state, which keeps
- * this component fully self-contained and leaves the Drawer untouched.
+ * `filterIcons` / `buildIconEntries` / `handleIconClick` are the pure, DOM-free
+ * half so they're unit-testable on their own (matches the project's node-only
+ * vitest setup) — `handleIconClick` takes its `insert`/`copy` collaborators as
+ * injectable params (defaulting to the real registry/clipboard) so tests can
+ * exercise both branches without mounting the component. Diacritics handling
+ * is delegated to SearchBox's `normalize` (imported, not copied) so "khong
+ * dau" queries still find accented names/aliases.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ALIASES, getIcon, listIcons, type IconSource } from "@diagram-copilot/icons";
 import { normalize } from "./SearchBox.js";
+import { insertIntoDrawer } from "./drawerInsertRegistry.js";
 import "./iconPalette.css";
 
 /** A single browsable icon: enough to render, search, tooltip, and copy it. */
@@ -96,11 +98,46 @@ export function filterIcons(entries: IconEntry[], query: string): IconEntry[] {
   );
 }
 
-/** Tooltip text for a cell: full name plus any aliases. */
+/** Tooltip text for a cell: full name, any aliases, and the click behavior. */
 function tooltipFor(entry: IconEntry): string {
-  return [entry.title, entry.aliases.length ? `aliases: ${entry.aliases.join(", ")}` : null]
+  return [
+    entry.title,
+    entry.aliases.length ? `aliases: ${entry.aliases.join(", ")}` : null,
+    "click: insert vào editor (drawer mở) / copy",
+  ]
     .filter(Boolean)
     .join(" · ");
+}
+
+/** Writes text to the clipboard — the real collaborator for {@link handleIconClick}. */
+type ClipboardWriter = (text: string) => Promise<void>;
+
+const defaultCopy: ClipboardWriter = (text) => navigator.clipboard.writeText(text);
+
+/**
+ * Decide (and perform) what clicking an icon cell does, and return the toast
+ * message to show. Tries `insert` first (defaults to the module-level
+ * {@link insertIntoDrawer} registry — succeeds only while the DSL drawer is
+ * open with a mounted editor); when that reports failure (drawer closed /
+ * nothing registered) falls back to `copy` (defaults to the real clipboard).
+ * `insert`/`copy` are injectable so this is unit-testable with fakes instead
+ * of a real Monaco editor or clipboard (matches the project's node-only
+ * vitest setup — no DOM/clipboard API there).
+ */
+export async function handleIconClick(
+  entry: IconEntry,
+  deps: { insert?: (text: string) => boolean; copy?: ClipboardWriter } = {},
+): Promise<string> {
+  const insert = deps.insert ?? insertIntoDrawer;
+  const copy = deps.copy ?? defaultCopy;
+  const snippet = `[icon: ${entry.id}]`;
+  if (insert(snippet)) return `inserted ${snippet}`;
+  try {
+    await copy(snippet);
+    return `copied ${snippet}`;
+  } catch {
+    return `copy failed — ${snippet}`;
+  }
 }
 
 export function IconPalette() {
@@ -151,14 +188,8 @@ export function IconPalette() {
     return () => window.clearTimeout(id);
   }, [toast]);
 
-  const handleCopy = async (entry: IconEntry) => {
-    const snippet = `[icon: ${entry.id}]`;
-    try {
-      await navigator.clipboard.writeText(snippet);
-      setToast(`copied ${snippet}`);
-    } catch {
-      setToast(`copy failed — ${snippet}`);
-    }
+  const handleClick = async (entry: IconEntry) => {
+    setToast(await handleIconClick(entry));
   };
 
   return (
@@ -203,7 +234,7 @@ export function IconPalette() {
                     type="button"
                     className={`icon-palette__cell${entry.fallback ? " icon-palette__cell--fallback" : ""}`}
                     title={tooltipFor(entry)}
-                    onClick={() => handleCopy(entry)}
+                    onClick={() => handleClick(entry)}
                   >
                     <span
                       className="icon-palette__glyph"

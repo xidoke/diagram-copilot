@@ -11,6 +11,14 @@
  * `diagram-error` messages. All non-visual sync logic — deciding when a
  * remote diagram may overwrite the buffer, and debouncing outbound edits —
  * lives in the DOM-free `drawerSync.ts` so it stays unit-testable.
+ *
+ * T-VE3 / DGC-80: while the editor is mounted and the drawer is open, this
+ * component registers an inserter with `drawerInsertRegistry.ts`'s
+ * module-level registry (same pattern as `setSnapshotProvider` in
+ * `render/snapshotResponder.ts`) so other UI — currently the icon palette —
+ * can insert text at the Monaco cursor without reaching into this component
+ * directly. It deregisters on close/unmount so callers fall back to their
+ * own behavior (e.g. clipboard copy) instead of inserting into a hidden editor.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import Editor, { loader, type BeforeMount, type Monaco, type OnMount } from "@monaco-editor/react";
@@ -25,6 +33,7 @@ import {
   shouldApplyRemote,
   type UpdateSender,
 } from "./drawerSync.js";
+import { registerDrawerInsert } from "./drawerInsertRegistry.js";
 import { errorsToMarkers, MARKER_OWNER } from "./drawerMarkers.js";
 import {
   ARCH_DSL_LANGUAGE_ID,
@@ -119,6 +128,10 @@ export function Drawer({ open, onToggle, diagram, send, lastError }: DrawerProps
   // Lazily mount Monaco only once the drawer has actually been opened, so a
   // user who never touches it doesn't pay the editor's load cost.
   const [everOpened, setEverOpened] = useState(open);
+  // Flips true once Monaco's `onMount` fires (see `handleMount`) — gates the
+  // insert-registry effect below so it never registers before `editorRef`
+  // actually holds an instance.
+  const [editorMounted, setEditorMounted] = useState(false);
 
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   // Populated by `handleBeforeMount` — the one and only `Monaco` reference
@@ -292,9 +305,37 @@ export function Drawer({ open, onToggle, diagram, send, lastError }: DrawerProps
       // Catch an error that arrived while the drawer was still closed (the
       // editor is lazily mounted — see `everOpened`).
       applyErrorMarkers(lastErrorRef.current, instance.getModel());
+      setEditorMounted(true);
     },
     [applyErrorMarkers],
   );
+
+  // Inserts `text` at the current selection and refocuses the editor — the
+  // function handed to the module-level registry below (T-VE3 / DGC-80).
+  // Reads `editorRef` fresh on every call rather than closing over `instance`
+  // so it stays correct across remounts.
+  const insertAtCursor = useCallback((text: string) => {
+    const instance = editorRef.current;
+    if (!instance) return;
+    const selection = instance.getSelection();
+    if (!selection) return;
+    instance.executeEdits("drawer-insert", [{ range: selection, text, forceMoveMarkers: true }]);
+    instance.focus();
+  }, []);
+
+  // Registry (de)registration: only while the editor is actually mounted AND
+  // the drawer is open — `everOpened` keeps the editor (and `editorMounted`)
+  // alive across a close, so `open` alone decides whether inserts should
+  // land here or fall back to e.g. a clipboard copy elsewhere (IconPalette).
+  // Cleanup covers both "drawer closed" and "component unmounted".
+  useEffect(() => {
+    if (!open || !editorMounted) {
+      registerDrawerInsert(null);
+      return;
+    }
+    registerDrawerInsert(insertAtCursor);
+    return () => registerDrawerInsert(null);
+  }, [open, editorMounted, insertAtCursor]);
 
   const handleChange = useCallback((next: string | undefined) => {
     const dsl = next ?? "";
