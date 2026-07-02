@@ -19,6 +19,7 @@ import {
 import { createRequestHandler, type OpenRequestHandler } from "./http.js";
 import type { LayoutApiHandler } from "./layout-overrides.js";
 import type { NotesApiHandler } from "./notes.js";
+import type { DslApiHandler } from "./dsl-api.js";
 import type { TemplatesApiHandler } from "./templates.js";
 import type { McpRequestHandler } from "./mcp/handler.js";
 
@@ -83,6 +84,13 @@ export interface CreateServerOptions {
    * pipeline, same opt-in pattern as `notesHandler`/`apiHandler`.
    */
   templatesHandler?: TemplatesApiHandler;
+  /**
+   * Handler for the raw-DSL read API (`GET /api/dsl/:name`, DGC-79), built with
+   * `createDslApiHandler` from `dsl-api.ts`. Feeds the web's diff overlay.
+   * Omitted → the route falls through to the static pipeline, same opt-in
+   * pattern as `notesHandler`/`templatesHandler`.
+   */
+  dslHandler?: DslApiHandler;
   /**
    * Handler for a schema-valid `update` frame from a connected client,
    * receiving the parsed message and the sending socket (so the workspace
@@ -165,6 +173,7 @@ export function createServer(options: CreateServerOptions): ServerHandle {
       options.notesHandler,
       options.templatesHandler,
       options.lifecycleHandler,
+      options.dslHandler,
     ),
   );
   const clients = new Set<WebSocket>();

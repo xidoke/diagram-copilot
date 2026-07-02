@@ -35,6 +35,7 @@ import { ArchGroup, ArchNode } from "./render/ArchNode.js";
 import { ELK_EDGE_TYPE, ElkEdge, ElkEdgeMarkerDefs } from "./render/ElkEdge.js";
 import { ARCH_GROUP_TYPE, ARCH_NODE_TYPE, toFlow } from "./render/toFlow.js";
 import { applyOverrides, deleteOverrides, fetchOverrides, markDirtyEdges, putOverrides } from "./render/overrides.js";
+import { applyDiffToEdges, applyDiffToNodes, type DiffOverlay } from "./render/diffOverlay.js";
 
 export const APP_TITLE = "diagram-copilot";
 
@@ -85,6 +86,9 @@ function DiagramCanvas() {
   // Bottom-right "⋯ layout" chip — on only while a layout pass is running
   // past LAYOUT_INDICATOR_DELAY_MS (see the layout effect below).
   const [layingOut, setLayingOut] = useState(false);
+  // Δ diff overlay (DGC-79) — the class maps StepsNav computes when its Δ toggle
+  // is on; `null` when off. Folded onto the derived flow below.
+  const [diffOverlay, setDiffOverlay] = useState<DiffOverlay | null>(null);
   const { fitView, getNodes, getNodesBounds } = useReactFlow();
 
   useEffect(() => {
@@ -132,12 +136,14 @@ function DiagramCanvas() {
   // stale ELK route and follows the live handles instead (DGC-69).
   useEffect(() => {
     setFlow({
-      nodes: applyOverrides(base.nodes, overrides),
+      // Δ overlay classes (DGC-79) are layered on top of the override pass here,
+      // off the drag hot path (onNodesChange). `null` overlay → no-op.
+      nodes: applyDiffToNodes(applyOverrides(base.nodes, overrides), diffOverlay),
       // Pass nodes so a dragged group also dirties edges touching its
       // descendants / crossing its boundary (DGC-71 ancestor case).
-      edges: markDirtyEdges(base.edges, overrides, base.nodes),
+      edges: applyDiffToEdges(markDirtyEdges(base.edges, overrides, base.nodes), diffOverlay),
     });
-  }, [base, overrides]);
+  }, [base, overrides, diffOverlay]);
 
   // Load the manual overrides for whichever diagram just became active. Cleared
   // first so diagram A's pins never briefly apply to diagram B.
@@ -307,7 +313,7 @@ function DiagramCanvas() {
         </div>
       )}
       <StatusPill status={status} />
-      <StepsNav workspace={workspace} />
+      <StepsNav workspace={workspace} onDiffChange={setDiffOverlay} />
       <UndoButton name={lastDiagram?.name ?? null} />
       <SearchBox nodes={searchNodes} />
       <Drawer open={drawerOpen} onToggle={toggleDrawer} diagram={lastDiagram} send={send} lastError={lastError} />

@@ -20,6 +20,7 @@ import { MCP_PATH, createOpenHandler, createLifecycleHttpHandler } from "./http.
 import { createLifecycleOps } from "./workspace/lifecycle.js";
 import { createLayoutApiHandler } from "./layout-overrides.js";
 import { createNotesApiHandler, createNotesStore } from "./notes.js";
+import { createDslApiHandler } from "./dsl-api.js";
 import { createTemplatesApiHandler } from "./templates.js";
 import { createMcpHandler, type McpInfo } from "./mcp/handler.js";
 import { createSnapshotBroker } from "./mcp/snapshot-broker.js";
@@ -218,6 +219,9 @@ async function main(): Promise<void> {
     // watcher to create+activate the new diagram, so it reads `null` until
     // `watcher` below is assigned.
     templatesHandler: createTemplatesApiHandler(() => watcher ?? null),
+    // Raw DSL read API (`GET /api/dsl/:name`, DGC-79) — reads `<name>.arch`
+    // verbatim from the workspace the CLI just resolved, for the diff overlay.
+    dslHandler: createDslApiHandler(options.workspace),
     // Web ⌘Z / Undo button → same undo logic as the MCP tool, over HTTP (T31).
     undoHandler: createUndoApiHandler(() => watcher ?? null, () => history),
     // Client (drawer/canvas) update frames → workspace writes with origin

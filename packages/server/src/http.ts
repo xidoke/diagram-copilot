@@ -14,6 +14,7 @@ import type { WorkspaceOps } from "./workspace/watcher.js";
 import type { LifecycleOps } from "./workspace/lifecycle.js";
 import { LAYOUT_API_PREFIX, type LayoutApiHandler } from "./layout-overrides.js";
 import { NOTES_API_PREFIX, type NotesApiHandler } from "./notes.js";
+import { DSL_API_PREFIX, type DslApiHandler } from "./dsl-api.js";
 import { TEMPLATES_API_PREFIX, type TemplatesApiHandler } from "./templates.js";
 import { UNDO_PATH } from "./history/http.js";
 
@@ -338,6 +339,7 @@ export function createRequestHandler(
   notesHandler?: NotesApiHandler,
   templatesHandler?: TemplatesApiHandler,
   lifecycleHandler?: OpenRequestHandler,
+  dslHandler?: DslApiHandler,
 ): (req: IncomingMessage, res: ServerResponse) => void {
   return (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
@@ -389,6 +391,14 @@ export function createRequestHandler(
     // reach it before the GET/HEAD-only guard below.
     if (templatesHandler && url.pathname.startsWith(TEMPLATES_API_PREFIX)) {
       void templatesHandler(req, res);
+      return;
+    }
+
+    // Raw DSL read API (`GET /api/dsl/:name`, DGC-79) — feeds the web's diff
+    // overlay, which fetches a step's `.arch` source to diff against the one
+    // before it. GET-only; the handler owns its method policy.
+    if (dslHandler && url.pathname.startsWith(DSL_API_PREFIX)) {
+      void dslHandler(req, res);
       return;
     }
 
