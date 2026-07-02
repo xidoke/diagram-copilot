@@ -27,6 +27,7 @@ import { Toolbar } from "./components/Toolbar.js";
 import { UndoButton } from "./components/UndoButton.js";
 import { Drawer } from "./components/Drawer.js";
 import { NotesPanel } from "./components/NotesPanel.js";
+import { PresentMode } from "./components/PresentMode.js";
 import { useDiagramConnection } from "./connection/index.js";
 import { applyPrefs, loadLayoutPrefs, saveLayoutPrefs, type LayoutPrefs } from "./render/layoutOptions.js";
 import { setSnapshotProvider } from "./render/snapshotResponder.js";
@@ -77,6 +78,10 @@ function DiagramCanvas() {
   const toggleDrawer = useCallback(() => setDrawerOpen((o) => !o), []);
   const [notesOpen, setNotesOpen] = useState(false);
   const toggleNotes = useCallback(() => setNotesOpen((o) => !o), []);
+  // Present mode (DGC-73) — full-screen step walkthrough. All the entry/exit
+  // hotkeys + UI live in PresentMode; App just owns the on/off flag so it can
+  // add the `presenting` class that hides chrome.
+  const [presentOn, setPresentOn] = useState(false);
   // Bottom-right "⋯ layout" chip — on only while a layout pass is running
   // past LAYOUT_INDICATOR_DELAY_MS (see the layout effect below).
   const [layingOut, setLayingOut] = useState(false);
@@ -246,12 +251,13 @@ function DiagramCanvas() {
   );
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell${presentOn ? " presenting" : ""}`}>
       {lastDiagram && <Picker workspace={workspace} name={lastDiagram.name} version={lastDiagram.version} />}
       <Toolbar
         prefs={prefs}
         onChange={setPrefs}
         onResetLayout={diagramName ? handleResetLayout : undefined}
+        onPresent={() => setPresentOn(true)}
       />
       <ExportMenu name={lastDiagram?.name ?? "diagram"} version={lastDiagram?.version ?? 0} />
       {showError && lastError && (
@@ -302,6 +308,12 @@ function DiagramCanvas() {
       <SearchBox nodes={searchNodes} />
       <Drawer open={drawerOpen} onToggle={toggleDrawer} diagram={lastDiagram} send={send} lastError={lastError} />
       <NotesPanel open={notesOpen} onToggle={toggleNotes} name={diagramName} />
+      <PresentMode
+        present={presentOn}
+        onEnter={() => setPresentOn(true)}
+        onExit={() => setPresentOn(false)}
+        workspace={workspace}
+      />
     </div>
   );
 }

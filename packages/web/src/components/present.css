@@ -1,0 +1,162 @@
+/*
+ * Present mode (DGC-73). Two halves:
+ *   1. `.presenting` on the app root hides every piece of chrome so the canvas
+ *      stands alone — one block, one place, so adding a new floating control
+ *      later just means adding its class here.
+ *   2. `.present*` is the lecture UI that replaces it: a slim caption bar, a
+ *      dim read-only notes panel, a corner watermark, and a faint exit ✕.
+ * Colors go through the same `--…` tokens as the rest of the app, so present
+ * mode themes (dark / light) for free.
+ */
+
+/* 1. Hide all chrome while presenting. */
+.presenting .toolbar,
+.presenting .picker,
+.presenting .export-menu,
+.presenting .status-pill,
+.presenting .steps-nav,
+.presenting .undo-btn,
+.presenting .search-box,
+.presenting .drawer,
+.presenting .notes,
+.presenting .layout-chip,
+.presenting .error-banner,
+.presenting .app-minimap,
+.presenting .react-flow__minimap,
+.presenting .react-flow__controls {
+  display: none !important;
+}
+
+/* 2. The present-mode UI. Sits above the canvas; the layer itself is
+   click-through so panning/zooming still works, only its controls capture. */
+.present {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+}
+.present button,
+.present .present-notes {
+  pointer-events: auto;
+}
+
+/* Dim exit ✕ — top-right, brightens on hover. */
+.present-exit {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-translucent);
+  color: var(--text-dim);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.35;
+  backdrop-filter: blur(6px);
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+.present-exit:hover {
+  opacity: 1;
+  color: var(--text-strong);
+}
+
+/* Caption bar — bottom center. Diagram name + big stepper. */
+.present-bar {
+  position: absolute;
+  bottom: 26px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  max-width: 80vw;
+  padding: 12px 22px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--panel-translucent);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 6px 24px var(--panel-shadow-color);
+}
+.present-bar__name {
+  color: var(--text-strong);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.present-bar__nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.present-bar__step {
+  color: var(--text-dim);
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.present-bar__btn {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text);
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.present-bar__btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-soft-bg);
+}
+.present-bar__btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* Read-only notes panel — right edge, dim, toggled with `n`. */
+.present-notes {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: min(380px, 34vw);
+  height: 100%;
+  padding: 56px 22px 90px;
+  background: var(--panel-translucent);
+  border-left: 1px solid var(--border);
+  backdrop-filter: blur(10px);
+  box-shadow: -8px 0 24px var(--panel-shadow-color);
+  overflow-y: auto;
+}
+.present-notes__body {
+  margin: 0;
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Corner watermark. */
+.present-watermark {
+  position: absolute;
+  bottom: 14px;
+  right: 16px;
+  color: var(--text-dim);
+  font-size: 11px;
+  letter-spacing: 0.4px;
+  opacity: 0.45;
+  user-select: none;
+}
