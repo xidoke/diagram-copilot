@@ -16,6 +16,7 @@ import { LAYOUT_API_PREFIX, type LayoutApiHandler } from "./layout-overrides.js"
 import { NOTES_API_PREFIX, type NotesApiHandler } from "./notes.js";
 import { TEMPLATES_API_PREFIX, type TemplatesApiHandler } from "./templates.js";
 import { UNDO_PATH } from "./history/http.js";
+import { EDIT_PATH } from "./edit-executor.js";
 
 /**
  * Route for the MCP Streamable HTTP endpoint (Claude Code). Kept here so the
@@ -324,8 +325,9 @@ function sendFile(res: ServerResponse, method: string, filePath: string, size: n
  * validation, and the filesystem write. Same deal for `openHandler` at
  * {@link API_OPEN_PATH} (the diagram picker's "open" action, DGC-57/T36),
  * `apiHandler` for the layout-override sidecar (`/api/layout/:name`, T30),
- * `undoHandler` for `POST /api/undo` (T31), and `templatesHandler` for the
- * template gallery (`/api/templates`, `/api/templates/use`, DGC-66/F6) —
+ * `undoHandler` for `POST /api/undo` (T31), `templatesHandler` for the
+ * template gallery (`/api/templates`, `/api/templates/use`, DGC-66/F6), and
+ * `editHandler` for the visual-editing ops route (`POST /api/edit`, DGC-78) —
  * each owns its method policy.
  */
 export function createRequestHandler(
@@ -338,6 +340,7 @@ export function createRequestHandler(
   notesHandler?: NotesApiHandler,
   templatesHandler?: TemplatesApiHandler,
   lifecycleHandler?: OpenRequestHandler,
+  editHandler?: OpenRequestHandler,
 ): (req: IncomingMessage, res: ServerResponse) => void {
   return (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
@@ -366,6 +369,13 @@ export function createRequestHandler(
     // `POST /api/undo` (T31) — exact match, before the layout prefix below.
     if (undoHandler && url.pathname === UNDO_PATH) {
       void undoHandler(req, res);
+      return;
+    }
+
+    // Visual-editing ops (`POST /api/edit`, DGC-78) — exact match; the
+    // handler (see `edit-executor.ts`) owns its own method policy.
+    if (editHandler && url.pathname === EDIT_PATH) {
+      void editHandler(req, res);
       return;
     }
 

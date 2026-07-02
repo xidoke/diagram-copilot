@@ -8,6 +8,7 @@ export {
   addEdge,
   addNode,
   moveToGroup,
+  removeEdge,
   removeElement,
   renameElement,
   setAttr,

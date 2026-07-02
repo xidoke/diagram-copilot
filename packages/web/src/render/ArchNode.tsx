@@ -1,7 +1,9 @@
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { getIcon } from "@diagram-copilot/icons";
 import { resolveColor } from "./colors.js";
+import { useEditActions } from "./EditContext.js";
+import { validateRename } from "./editRequests.js";
 import type { ArchNodeData } from "./toFlow.js";
 
 const HANDLE_POSITIONS: Record<string, { target: Position; source: Position }> = {
@@ -11,8 +13,79 @@ const HANDLE_POSITIONS: Record<string, { target: Position; source: Position }> =
   up: { target: Position.Bottom, source: Position.Top },
 };
 
+/**
+ * Node/group label with double-click-to-rename (DGC-78 visual editing p1).
+ *
+ * Double-click swaps the label span for an inline input holding the element's
+ * NAME (= id — that is what a rename edits; an explicit `label:` attr is a
+ * separate attribute and stays put). Enter posts a `rename` op through the
+ * {@link useEditActions} context (the canvas then refreshes off the WS
+ * broadcast); Escape or blur cancels. Without a provider (render tests, no
+ * active diagram) the label is inert.
+ *
+ * Kept as a CHILD component so `ArchNode`/`ArchGroup` stay hook-free and
+ * callable as plain functions (see `ArchNode.test.tsx`), and so the input is
+ * class-tagged `nodrag` — React Flow must not start a node/group drag from a
+ * pointerdown inside it (critical for the group title band, which doubles as
+ * the drag handle).
+ */
+export function EditableLabel({ id, label, className }: { id: string; label: string; className: string }) {
+  const edit = useEditActions();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(id);
+
+  if (!editing || edit === null) {
+    return (
+      <span
+        className={className}
+        onDoubleClick={
+          edit === null
+            ? undefined
+            : (e) => {
+                e.stopPropagation();
+                setDraft(id);
+                setEditing(true);
+              }
+        }
+        title={edit === null ? undefined : "Double-click để đổi tên"}
+      >
+        {label}
+      </span>
+    );
+  }
+
+  const finish = (submit: boolean) => {
+    setEditing(false);
+    if (!submit) return;
+    const next = validateRename(id, draft);
+    if (next !== null) edit.rename(id, next);
+  };
+
+  return (
+    <input
+      className="arch-rename-input nodrag nopan"
+      value={draft}
+      autoFocus
+      onFocus={(e) => e.currentTarget.select()}
+      onChange={(e) => setDraft(e.target.value)}
+      onKeyDown={(e) => {
+        // Keep Enter/Escape/Backspace away from the canvas-level shortcuts
+        // (Delete-to-remove, ⌘Z undo) and React Flow's own key handling.
+        e.stopPropagation();
+        if (e.key === "Enter") finish(true);
+        else if (e.key === "Escape") finish(false);
+      }}
+      onBlur={() => finish(false)}
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+      aria-label={`Đổi tên "${id}"`}
+    />
+  );
+}
+
 /** Leaf node — theme B "dark blueprint": optional icon chip + label. */
-export function ArchNode({ data }: NodeProps) {
+export function ArchNode({ id, data }: NodeProps) {
   const { label, direction, icon, color } = data as ArchNodeData;
   const pos = HANDLE_POSITIONS[direction] ?? HANDLE_POSITIONS.right;
   // `color` is a token *name* (e.g. "orange"); resolveColor turns it into a
@@ -39,7 +112,7 @@ export function ArchNode({ data }: NodeProps) {
           dangerouslySetInnerHTML={{ __html: getIcon(icon).svg }}
         />
       )}
-      <span className="arch-node-label">{label}</span>
+      <EditableLabel id={id} label={label} className="arch-node-label" />
       <Handle type="source" position={pos.source} className="arch-handle" />
     </div>
   );
@@ -49,7 +122,7 @@ export function ArchNode({ data }: NodeProps) {
 const MAX_DEPTH_TINT = 3;
 
 /** Group container — dashed outline with an uppercase corner label, subtly accented when colored. */
-export function ArchGroup({ data }: NodeProps) {
+export function ArchGroup({ id, data }: NodeProps) {
   const { label, direction, icon, color, depth } = data as ArchNodeData;
   const pos = HANDLE_POSITIONS[direction] ?? HANDLE_POSITIONS.right;
   const accent = resolveColor(color);
@@ -71,7 +144,9 @@ export function ArchGroup({ data }: NodeProps) {
       {/* Title band = the group's drag handle (DGC-71). React Flow only starts
           a group drag when the pointerdown lands here (see ARCH_GROUP_DRAG_HANDLE
           / dragHandle in toFlow); the body stays free for pan/select/child-drag.
-          `title` gives a hover tooltip hinting the affordance. */}
+          `title` gives a hover tooltip hinting the affordance. Double-click on
+          the label renames the group (DGC-78) — the rename input is `nodrag`,
+          so typing in it never starts a drag. */}
       <div className="arch-group__title" title="Kéo tiêu đề để di chuyển nhóm">
         {icon !== undefined && (
           <span
@@ -82,7 +157,7 @@ export function ArchGroup({ data }: NodeProps) {
             dangerouslySetInnerHTML={{ __html: getIcon(icon).svg }}
           />
         )}
-        <span className="arch-group-label">{label}</span>
+        <EditableLabel id={id} label={label} className="arch-group-label" />
       </div>
       <Handle type="source" position={pos.source} className="arch-handle" />
     </div>

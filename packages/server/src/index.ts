@@ -17,6 +17,7 @@ import type { ServerMessage } from "@diagram-copilot/core";
 import { createServer, WELCOME_WORKSPACE, WS_PATH } from "./server.js";
 import { createClientUpdateHandler } from "./client-updates.js";
 import { MCP_PATH, createOpenHandler, createLifecycleHttpHandler } from "./http.js";
+import { createEditApiHandler } from "./edit-executor.js";
 import { createLifecycleOps } from "./workspace/lifecycle.js";
 import { createLayoutApiHandler } from "./layout-overrides.js";
 import { createNotesApiHandler, createNotesStore } from "./notes.js";
@@ -207,6 +208,9 @@ async function main(): Promise<void> {
     openHandler: createOpenHandler(() => watcher ?? null),
     // `POST /api/rename` + `/api/trash` (DGC-65) — picker's rename/delete actions.
     lifecycleHandler: createLifecycleHttpHandler(() => lifecycle),
+    // `POST /api/edit` (DGC-78) — visual editing: canvas gestures (Delete key,
+    // inline rename) write back to the DSL through the shared edit executor.
+    editHandler: createEditApiHandler(() => watcher ?? null),
     // Layout-override sidecar API — reads/writes `<name>.layout.json` next to
     // each diagram in the workspace the CLI just resolved.
     apiHandler: createLayoutApiHandler(options.workspace),

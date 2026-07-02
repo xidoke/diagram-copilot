@@ -205,6 +205,33 @@ export function moveToGroup(dsl: string, id: string, groupId: string | null): st
 }
 
 /**
+ * Remove one edge addressed by its endpoints (and optional label) instead of
+ * its positional `eN` id. Edge ids are assigned by parse order, so a client
+ * holding a stale view could delete the wrong edge by id — endpoints are
+ * stable. `label` narrows parallel edges; when several `from > to` edges
+ * exist with DIFFERENT labels and no `label` is given, the call is rejected
+ * as ambiguous. Indistinguishable duplicates remove the first occurrence.
+ */
+export function removeEdge(dsl: string, from: string, to: string, label?: string): string {
+  const doc = parseOrThrow(dsl, "removeEdge");
+  const candidates = doc.edges.filter(
+    (e) => e.from === from && e.to === to && (label === undefined || (e.label ?? "") === label),
+  );
+  if (candidates.length === 0) {
+    throw new Error(`removeEdge: no edge ${from} > ${to}${label !== undefined ? `: ${label}` : ""}`);
+  }
+  const labels = [...new Set(candidates.map((e) => e.label ?? ""))];
+  if (candidates.length > 1 && label === undefined && labels.length > 1) {
+    const listed = labels.map((l) => (l === "" ? "(no label)" : `"${l}"`)).join(", ");
+    throw new Error(
+      `removeEdge: ${candidates.length} edges match ${from} > ${to} — pass a label to disambiguate (${listed})`,
+    );
+  }
+  const removeId = candidates[0].id;
+  return applyDocEdit(dsl, { ...doc, edges: doc.edges.filter((e) => e.id !== removeId) });
+}
+
+/**
  * Remove a node, group, or edge by id.
  * - Node: also removes every edge that references it.
  * - Group: cascades — descendant groups and member nodes are removed too,

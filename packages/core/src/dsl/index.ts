@@ -14,6 +14,7 @@ export {
   applyDocEdit,
   moveToGroup,
   printDsl,
+  removeEdge,
   removeElement,
   renameElement,
   setAttr,
