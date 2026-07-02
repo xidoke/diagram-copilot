@@ -15,3 +15,4 @@ build/
 # local workspace data (diagram files của người dùng, không phải source)
 # anchored: chỉ match ở repo root, không match packages/*/src/workspace/
 /workspace/
+/videos/
