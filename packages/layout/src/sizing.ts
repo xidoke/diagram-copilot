@@ -25,9 +25,31 @@ export const NODE_ICON_WIDTH = 34;
 /** Approximate advance width of one label character, in px. */
 export const NODE_CHAR_WIDTH = 8.5;
 
+/** Fixed edge-label height, in px (one 11px-bold row plus chrome). */
+export const EDGE_LABEL_HEIGHT = 22;
+
+/** Approximate advance width of one edge-label character, in px (11px font). */
+export const EDGE_LABEL_CHAR_WIDTH = 7.2;
+
+/** Horizontal chrome (padding + border) around an edge label, in px. */
+export const EDGE_LABEL_HORIZONTAL_PADDING = 16;
+
 /** Clamp `value` into the inclusive `[min, max]` range. */
 function clamp(min: number, value: number, max: number): number {
   return Math.min(Math.max(value, min), max);
+}
+
+/**
+ * Estimated pixel box for an edge label with the given text, handed to ELK so
+ * the router reserves real room for the label instead of letting it overlap
+ * nodes/edges. `width = chars * 7.2 + 16`, `height = 22` — same
+ * character-count heuristic as {@link measureNode}.
+ */
+export function measureEdgeLabel(text: string): { width: number; height: number } {
+  return {
+    width: text.length * EDGE_LABEL_CHAR_WIDTH + EDGE_LABEL_HORIZONTAL_PADDING,
+    height: EDGE_LABEL_HEIGHT,
+  };
 }
 
 /**

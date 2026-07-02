@@ -7,10 +7,30 @@
  * space before it reaches this component. React Flow renders edge paths in
  * that same root flow coordinate space, so the path data can be emitted
  * as-is; the source/target handles remain purely logical anchors.
+ *
+ * Live endpoints (DGC-69): the ELK route is only valid while both endpoints
+ * still sit where ELK put them. The edge switches to a *dynamic* smoothstep
+ * drawn from React Flow's live handle positions when either
+ *  - `data.dirtyEndpoints` is set (an endpoint has a saved manual override —
+ *    marked by `markDirtyEdges` in App), or
+ *  - the live handle positions drift off the layout-time anchors
+ *    (`data.staticSource` / `data.staticTarget`) by more than
+ *    {@link HANDLE_MATCH_EPSILON} — which is exactly what happens on every
+ *    frame of an in-progress drag, so the edge follows the node live.
+ * The anchors are the node-border handle centers `toFlow` computes from the
+ * positioned graph — NOT the ELK section endpoints, which ELK fans out along
+ * the border when a node has several edges and therefore rarely coincide
+ * with the single React Flow handle.
  */
-import { BaseEdge, EdgeLabelRenderer, SmoothStepEdge, type EdgeProps } from "@xyflow/react";
-import type { PositionedEdgeSection } from "@diagram-copilot/layout";
-import { buildElkPath, edgeLabelAnchor } from "./elkPath.js";
+import {
+  BaseEdge,
+  EdgeLabelRenderer,
+  SmoothStepEdge,
+  getSmoothStepPath,
+  type EdgeProps,
+} from "@xyflow/react";
+import type { Point, PositionedEdgeSection } from "@diagram-copilot/layout";
+import { ELK_EDGE_RADIUS, buildElkPath, edgeLabelAnchor } from "./elkPath.js";
 
 /** Edge `type` key registered in React Flow's `edgeTypes`. */
 export const ELK_EDGE_TYPE = "elk";
@@ -18,13 +38,35 @@ export const ELK_EDGE_TYPE = "elk";
 /** `data` payload `toFlow` attaches to every `elk` edge. */
 export interface ElkEdgeData extends Record<string, unknown> {
   sections: PositionedEdgeSection[];
+  /** ELK-placed label box center (absolute coords); heuristic fallback when absent. */
+  labelPos?: Point;
+  /** Source handle center at layout time (absolute coords) — drift detector input. */
+  staticSource?: Point;
+  /** Target handle center at layout time (absolute coords) — drift detector input. */
+  staticTarget?: Point;
+  /** True when either endpoint has a saved manual override (stale ELK route). */
+  dirtyEndpoints?: boolean;
 }
 
 /** SVG marker id for the edge arrowhead (defined by `ElkEdgeMarkerDefs`). */
 export const ELK_ARROW_ID = "elk-edge-arrow";
 
-/** How far (px) the label sits off the line, along the segment normal. */
+/** How far (px) the heuristic label sits off the line, along the segment normal. */
 const LABEL_OFFSET = 14;
+
+/**
+ * Max drift (px, per axis) between a live handle and its layout-time anchor
+ * before the ELK route is considered stale and the edge goes dynamic.
+ */
+export const HANDLE_MATCH_EPSILON = 2;
+
+/** Is `(x, y)` within {@link HANDLE_MATCH_EPSILON} of `anchor` on both axes? */
+function nearAnchor(x: number, y: number, anchor: Point): boolean {
+  return (
+    Math.abs(x - anchor.x) <= HANDLE_MATCH_EPSILON &&
+    Math.abs(y - anchor.y) <= HANDLE_MATCH_EPSILON
+  );
+}
 
 /**
  * One-off `<defs>` holding the arrowhead marker: an accent-colored chevron
@@ -60,34 +102,83 @@ export function ElkEdgeMarkerDefs() {
   );
 }
 
+/** Shared label chrome: centered on `(x, y)`, full text in a hover tooltip. */
+function ElkEdgeLabel({ x, y, label }: { x: number; y: number; label: EdgeProps["label"] }) {
+  return (
+    <EdgeLabelRenderer>
+      <div
+        className="elk-edge-label"
+        title={typeof label === "string" ? label : undefined}
+        style={{ transform: `translate(-50%, -50%) translate(${x}px, ${y}px)` }}
+      >
+        {label}
+      </div>
+    </EdgeLabelRenderer>
+  );
+}
+
 /**
- * ELK bend-point edge: orthogonal segments with rounded corners, arrowhead,
- * and the label riding the longest segment. Defensive fallback: when
- * `data.sections` is missing/empty (or degenerate), render the old
- * smoothstep so the edge never disappears.
+ * ELK bend-point edge with a live fallback:
+ *
+ * - **Static** (endpoints untouched): orthogonal ELK segments with rounded
+ *   corners, arrowhead, and the label at ELK's own label position
+ *   (`data.labelPos`; longest-segment heuristic when absent).
+ * - **Dynamic** (endpoint overridden or mid-drag, see module docs): a
+ *   smoothstep from React Flow's live handle coordinates, same arrowhead and
+ *   label chrome, so the edge tracks the node on every frame of a drag.
+ * - Defensive: when `data.sections` is missing/degenerate *and* no live
+ *   handle coordinates are available, render React Flow's own smoothstep so
+ *   the edge never disappears.
  */
 export function ElkEdge(props: EdgeProps) {
-  const { id, label, data } = props;
-  const sections = (data as Partial<ElkEdgeData> | undefined)?.sections ?? [];
+  const { id, label, data, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition } =
+    props;
+  const d = data as Partial<ElkEdgeData> | undefined;
+  const sections = d?.sections ?? [];
   const path = buildElkPath(sections);
-  if (!path) return <SmoothStepEdge {...props} />;
+  const hasLabel = label != null && label !== "";
 
-  const anchor = label != null && label !== "" ? edgeLabelAnchor(sections) : null;
+  const liveHandles = [sourceX, sourceY, targetX, targetY].every(Number.isFinite);
+  const anchorsMatch =
+    !liveHandles ||
+    !d?.staticSource ||
+    !d?.staticTarget ||
+    (nearAnchor(sourceX, sourceY, d.staticSource) &&
+      nearAnchor(targetX, targetY, d.staticTarget));
+
+  if (path && d?.dirtyEndpoints !== true && anchorsMatch) {
+    const anchor = hasLabel ? edgeLabelAnchor(sections) : null;
+    const labelXY = hasLabel
+      ? d?.labelPos ??
+        (anchor
+          ? { x: anchor.x + anchor.nx * LABEL_OFFSET, y: anchor.y + anchor.ny * LABEL_OFFSET }
+          : null)
+      : null;
+    return (
+      <>
+        <BaseEdge id={id} path={path} markerEnd={`url(#${ELK_ARROW_ID})`} />
+        {labelXY && <ElkEdgeLabel x={labelXY.x} y={labelXY.y} label={label} />}
+      </>
+    );
+  }
+
+  // No route *and* no live handle coordinates (degenerate data in tests /
+  // first frame) — let React Flow draw its own smoothstep rather than a NaN path.
+  if (!liveHandles) return <SmoothStepEdge {...props} />;
+
+  const [dynamicPath, labelX, labelY] = getSmoothStepPath({
+    sourceX,
+    sourceY,
+    sourcePosition,
+    targetX,
+    targetY,
+    targetPosition,
+    borderRadius: ELK_EDGE_RADIUS,
+  });
   return (
     <>
-      <BaseEdge id={id} path={path} markerEnd={`url(#${ELK_ARROW_ID})`} />
-      {anchor && (
-        <EdgeLabelRenderer>
-          <div
-            className="elk-edge-label"
-            style={{
-              transform: `translate(-50%, -50%) translate(${anchor.x + anchor.nx * LABEL_OFFSET}px, ${anchor.y + anchor.ny * LABEL_OFFSET}px)`,
-            }}
-          >
-            {label}
-          </div>
-        </EdgeLabelRenderer>
-      )}
+      <BaseEdge id={id} path={dynamicPath} markerEnd={`url(#${ELK_ARROW_ID})`} />
+      {hasLabel && <ElkEdgeLabel x={labelX} y={labelY} label={label} />}
     </>
   );
 }

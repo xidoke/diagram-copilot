@@ -493,12 +493,15 @@ body {
   filter: brightness(1.35);
 }
 
-/* ELK edge label (T15) — rides the longest segment, on a translucent panel
-   like the other floating chrome so it stays legible over the grid. */
+/* ELK edge label (T15) — placed at ELK's reserved label box (DGC-69; the
+   longest-segment heuristic is the fallback), on a translucent panel like the
+   other floating chrome so it stays legible over the grid. Very long labels
+   ellipsize at 220px; the full text lives in the `title` tooltip, which is
+   why the label accepts pointer events (hover only — it has no handlers). */
 .elk-edge-label {
   position: absolute;
   z-index: 1;
-  pointer-events: none;
+  pointer-events: all;
   background: var(--panel-translucent);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -508,6 +511,9 @@ body {
   color: var(--text-dim);
   backdrop-filter: blur(4px);
   white-space: nowrap;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Onboarding empty state (T33) — dead-centered over the canvas. The wrapper

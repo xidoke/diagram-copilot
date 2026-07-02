@@ -11,7 +11,7 @@
  * verbatim, with no conversion. Only leaf nodes are draggable (groups keep
  * `draggable: false`), so in practice only leaf positions are ever overridden.
  */
-import type { Node } from "@xyflow/react";
+import type { Edge, Node } from "@xyflow/react";
 import type { LayoutOverrides } from "@diagram-copilot/core";
 import { ARCH_GROUP_TYPE } from "./toFlow.js";
 
@@ -84,5 +84,21 @@ export function applyOverrides(nodes: Node[], overrides: LayoutOverrides): Node[
       ? `${node.className} ${PINNED_CLASS}`
       : PINNED_CLASS;
     return { ...node, position: { x: position.x, y: position.y }, className };
+  });
+}
+
+/**
+ * Edge-side companion of {@link applyOverrides} (DGC-69): flag every edge
+ * whose source OR target has a saved override as `data.dirtyEndpoints` — the
+ * ELK-routed sections were computed for the auto-layout position, so once an
+ * endpoint is pinned elsewhere the static route is meaningless and `ElkEdge`
+ * must draw a live smoothstep instead. Pure: edges whose flag already matches
+ * are returned unchanged (base edges carry no flag, which reads as `false`).
+ */
+export function markDirtyEdges(edges: Edge[], overrides: LayoutOverrides): Edge[] {
+  return edges.map((edge) => {
+    const dirty = overrides[edge.source] !== undefined || overrides[edge.target] !== undefined;
+    if (Boolean(edge.data?.dirtyEndpoints) === dirty) return edge;
+    return { ...edge, data: { ...edge.data, dirtyEndpoints: dirty } };
   });
 }

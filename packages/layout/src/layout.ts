@@ -10,7 +10,7 @@ import ElkConstructor, {
   type ElkExtendedEdge,
 } from "elkjs/lib/elk.bundled.js";
 import type { DiagramDoc } from "@diagram-copilot/core";
-import { measureNode } from "./sizing.js";
+import { measureEdgeLabel, measureNode } from "./sizing.js";
 import {
   DEFAULT_SPACING,
   SPACING_PRESETS,
@@ -72,12 +72,17 @@ function buildElkGraph(
   }
 
   // All edges live on the root graph; INCLUDE_CHILDREN lets them cross
-  // hierarchy boundaries (matches the spike).
+  // hierarchy boundaries (matches the spike). Labels carry an estimated box
+  // (measureEdgeLabel) so ELK reserves real room for them while routing —
+  // labeled edges get their own space between layers instead of the label
+  // overlapping nodes or sibling labels (DGC-69).
   const edges: ElkExtendedEdge[] = doc.edges.map((edge) => ({
     id: edge.id,
     sources: [edge.from],
     targets: [edge.to],
-    ...(edge.label !== undefined ? { labels: [{ text: edge.label }] } : {}),
+    ...(edge.label !== undefined
+      ? { labels: [{ text: edge.label, ...measureEdgeLabel(edge.label) }] }
+      : {}),
   }));
 
   const graph: ElkNode = {
@@ -167,7 +172,18 @@ function toPositionedEdge(
   offsetX: number,
   offsetY: number,
 ): PositionedEdge {
-  const label = edge.labels?.[0]?.text;
+  const elkLabel = edge.labels?.[0];
+  const label = elkLabel?.text;
+  // ELK reports the label's top-left in the same container-relative frame as
+  // the sections; lift it by the same offset and convert to the box center
+  // (the renderer places labels with a centering transform).
+  const labelPos =
+    elkLabel?.x !== undefined && elkLabel?.y !== undefined
+      ? {
+          x: elkLabel.x + (elkLabel.width ?? 0) / 2 + offsetX,
+          y: elkLabel.y + (elkLabel.height ?? 0) / 2 + offsetY,
+        }
+      : undefined;
   const sections: PositionedEdgeSection[] = (edge.sections ?? []).map((section) => ({
     startPoint: { x: section.startPoint.x + offsetX, y: section.startPoint.y + offsetY },
     endPoint: { x: section.endPoint.x + offsetX, y: section.endPoint.y + offsetY },
@@ -180,6 +196,7 @@ function toPositionedEdge(
     from: edge.sources[0]!,
     to: edge.targets[0]!,
     ...(label !== undefined ? { label } : {}),
+    ...(labelPos !== undefined ? { labelPos } : {}),
     sections,
   };
 }
