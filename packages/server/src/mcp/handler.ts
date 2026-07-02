@@ -33,6 +33,8 @@ import { registerDiagramTools } from "./tools/diagram.js";
 import { registerSnapshotDiagramTool } from "./tools/snapshot-steps.js";
 import { registerSnapshotTool, type SnapshotOps } from "./tools/snapshot.js";
 import { registerHistoryTools } from "./tools/history.js";
+import { registerValidateDslTool } from "./tools/validate.js";
+import { registerExportDiagramTool } from "./tools/export-file.js";
 
 /** MCP server identity advertised in the `initialize` result. */
 export const MCP_SERVER_NAME = "diagram-copilot";
@@ -73,6 +75,14 @@ export interface McpHandlerOptions {
    * tools out entirely.
    */
   getHistory?: () => HistoryStore | null;
+  /**
+   * On-disk destination config for `export_diagram` (F2): the default
+   * `--export-dir` plus the whitelisted `--export-root` directories a caller
+   * `path` may write into. Registered only alongside `snapshot` + `getWorkspace`
+   * (rendering needs the WS hub, the version stamp needs the workspace); omit to
+   * leave `export_diagram` out entirely.
+   */
+  exportPaths?: { dir: string; roots: string[] };
 }
 
 /** A `node:http` request handler for the `/mcp` route. */
@@ -105,6 +115,9 @@ function registerTools(server: McpServer, options: McpHandlerOptions): void {
   );
   registerGetDslGuideTool(server);
   registerListIconsTool(server);
+  // Stateless dry-run DSL check (F1) — pure function of its input, like the
+  // guide/icons reference tools, so it needs no wiring.
+  registerValidateDslTool(server);
 
   // Workspace + diagram tools plug in only when the server is wired with a
   // workspace (a bare ping-only server omits them).
@@ -121,6 +134,22 @@ function registerTools(server: McpServer, options: McpHandlerOptions): void {
   // Canvas-rendered PNG snapshots (T24) — needs the WS hub, so it plugs in
   // only when the server was wired with snapshot ops.
   if (options.snapshot !== undefined) registerSnapshotTool(server, options.snapshot);
+
+  // Render-to-file export (F2) — needs the WS hub (rendering) AND the workspace
+  // (version stamp) AND a destination config, so it plugs in only when all three
+  // are wired.
+  if (
+    options.snapshot !== undefined &&
+    options.getWorkspace !== undefined &&
+    options.exportPaths !== undefined
+  ) {
+    registerExportDiagramTool(server, {
+      snapshot: options.snapshot,
+      getWorkspace: options.getWorkspace,
+      exportDir: options.exportPaths.dir,
+      roots: options.exportPaths.roots,
+    });
+  }
 }
 
 /**

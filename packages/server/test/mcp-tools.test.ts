@@ -54,16 +54,23 @@ async function callTool(port: number, name: string, args: Record<string, unknown
   return body.result.content[0].text as string;
 }
 
-describe("tools/list — advertises all three tools", () => {
-  it("lists ping, get_dsl_guide and list_icons", async () => {
+describe("tools/list — advertises the stateless tools", () => {
+  it("lists ping, get_dsl_guide, list_icons and validate_dsl", async () => {
     const port = await startMcpServer();
 
     const response = await post(port, { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} });
     const body = await response.json();
     const tools = body.result.tools as Array<{ name: string }>;
 
-    expect(tools).toHaveLength(3);
-    expect(tools.map((tool) => tool.name).sort()).toEqual(["get_dsl_guide", "list_icons", "ping"]);
+    // validate_dsl (F1) is a pure dry-run check, registered unconditionally
+    // alongside the other stateless reference tools even on a bare server.
+    expect(tools).toHaveLength(4);
+    expect(tools.map((tool) => tool.name).sort()).toEqual([
+      "get_dsl_guide",
+      "list_icons",
+      "ping",
+      "validate_dsl",
+    ]);
   });
 });
 
@@ -99,6 +106,8 @@ describe("get_dsl_guide", () => {
     expect(text).toContain("set_diagram");
     // Teaches self-correction from the "line X, col Y" error shape set_diagram returns.
     expect(text).toMatch(/line X, col Y/);
+    // Points at validate_dsl as the pre-flight dry-run for large rewrites (F1).
+    expect(text).toContain("validate_dsl");
   });
 
   it("shows a two-tier nested group and a boundary-crossing edge in the example", async () => {
