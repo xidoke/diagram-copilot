@@ -35,6 +35,19 @@ Real-ish `.arch` system-design sketches used two ways:
   if a token remains. Two flat groups (`Edge`, `Backend`). Exercises: a
   Vietnamese node name (`Người dùng`, "user") as the client, and
   Vietnamese edge labels end to end.
+- **`microservices.arch`** (T-PERF/DGC-76) — a ~60-node e-commerce
+  microservices stress fixture, hand-written (not runtime-generated) to
+  exercise `packages/layout`'s layout-time budget on a realistic large
+  graph. A public edge (`Web Client`/`Mobile Client`/`Partner Client`)
+  feeds a `Platform` group nesting 9 child groups — `Edge`, `API Tier`,
+  four business domains (`Users Domain`, `Orders Domain`, `Payments
+  Domain`, `Inventory Domain`), a shared `Data Tier`, `Messaging` (Kafka
+  fan-out), and `Observability` — plus two third-level `…Data` groups
+  (`Users Data`, `Orders Data`) nested inside their domain, for 12 groups
+  total across 3 levels of nesting. 92 labeled edges (including a
+  one-to-many fan-out and a 4-way fan-in) span 29 distinct icons across
+  all 9 named color tokens. See `packages/layout/test/perf.test.ts` and
+  `docs/PERF.md` for the layout-time measurements this fixture drives.
 
 ## Icons used
 
@@ -46,6 +59,7 @@ either directly or through an alias — see `packages/icons/src/aliases.ts`.
 | `url-shortener.arch` | `monitor`, `network`, `server`, `redis`, `postgresql`, `list` |
 | `news-feed.arch` | `monitor`, `cloud`, `network`, `server`, `lock`, `cpu`, `bell`, `redis`, `postgresql`, `hard-drive`, `elasticsearch`, `apachekafka` |
 | `rate-limiter.arch` | `monitor`, `shield`, `cpu`, `redis`, `server` |
+| `microservices.arch` | `monitor`, `smartphone`, `globe`, `cloud`, `network`, `shield`, `server`, `lock`, `redis`, `graphql`, `cpu`, `webhook`, `layers`, `user`, `bell`, `postgresql`, `database`, `box`, `router`, `mysql`, `elasticsearch`, `hard-drive`, `apachekafka`, `mail`, `list`, `prometheus`, `grafana`, `githubactions`, `stripe` |
 
 Note: `cpu` stands in for "rate limiter" (there is no dedicated
 gauge/meter icon in the ~38-icon registry); `monitor` is the existing
