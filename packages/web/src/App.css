@@ -264,6 +264,57 @@ body {
   background: var(--status-disconnected-bg);
 }
 
+/* Steps navigation (DGC-12) — bottom center, stacked just above the status
+   pill (pill sits at bottom: 16px and is ~24px tall, so 50px clears it with
+   a small gap) so both floating chips read as one vertical stack. Only
+   rendered when the active diagram belongs to a step chain — see
+   StepsNav.tsx's `buildStepChain`. */
+.steps-nav {
+  position: fixed;
+  bottom: 50px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel-translucent);
+  backdrop-filter: blur(6px);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+.steps-nav__btn {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+.steps-nav__btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.steps-nav__btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.steps-nav__label {
+  min-width: 56px;
+  text-align: center;
+  letter-spacing: 0.01em;
+}
+
 .react-flow__controls {
   filter: invert(0.9) hue-rotate(180deg);
 }
