@@ -8,6 +8,7 @@ import {
   moveToGroup,
   parseDsl,
   printDsl,
+  removeEdge,
   removeElement,
   renameElement,
   setAttr,
@@ -227,6 +228,57 @@ describe("removeElement", () => {
 
   it("throws on unknown ids", () => {
     expect(() => removeElement(RATE_LIMITER, "Không có")).toThrow(/no node, group, or edge/);
+  });
+});
+
+describe("removeEdge", () => {
+  it("removes an edge by its endpoints, keeping every untouched line (comments included)", () => {
+    const out = removeEdge(RATE_LIMITER, "Gateway", "Rate Limiter");
+    expect(out).not.toContain("Gateway > Rate Limiter");
+    // Neighboring lines and the Vietnamese comments survive byte-for-byte.
+    expect(out).toContain("// Request flow:");
+    expect(out).toContain("Người dùng > Gateway: gửi yêu cầu");
+    const doc = parseOk(out);
+    expect(doc.edges.some((e) => e.from === "Gateway" && e.to === "Rate Limiter")).toBe(false);
+    // Endpoints themselves are untouched.
+    expect(doc.nodes.some((n) => n.id === "Gateway")).toBe(true);
+    expect(doc.nodes.some((n) => n.id === "Rate Limiter")).toBe(true);
+  });
+
+  it("round-trips: the result parses and applyDocEdit is an identity on it", () => {
+    const out = removeEdge(RATE_LIMITER, "Rate Limiter", "Rules Cache");
+    const doc = parseOk(out);
+    expect(applyDocEdit(out, doc)).toBe(out);
+    expect(parseOk(printDsl(doc))).toEqual(doc);
+  });
+
+  it("disambiguates parallel edges by label", () => {
+    const dsl = "A > B: đọc // ghi chú đọc\nA > B: ghi\n";
+    const out = removeEdge(dsl, "A", "B", "đọc");
+    expect(out).toBe("A > B: ghi\n");
+  });
+
+  it("rejects ambiguous parallel edges when no label is given", () => {
+    const dsl = "A > B: đọc\nA > B: ghi\n";
+    expect(() => removeEdge(dsl, "A", "B")).toThrow(/pass a label to disambiguate/);
+  });
+
+  it("removes the first of indistinguishable duplicate edges only", () => {
+    const dsl = "A > B\nC\nA > B\n";
+    const out = removeEdge(dsl, "A", "B");
+    expect(parseOk(out).edges).toHaveLength(1);
+    expect(out).toContain("A > B");
+  });
+
+  it("matches an unlabeled edge when label is the empty string", () => {
+    const dsl = "A > B\nA > B: ghi\n";
+    const out = removeEdge(dsl, "A", "B", "");
+    expect(parseOk(out).edges).toEqual([{ id: "e1", from: "A", to: "B", label: "ghi" }]);
+  });
+
+  it("throws when no edge matches the endpoints (or the label)", () => {
+    expect(() => removeEdge(RATE_LIMITER, "Gateway", "Không có")).toThrow(/no edge Gateway > Không có/);
+    expect(() => removeEdge(RATE_LIMITER, "Gateway", "Rate Limiter", "sai nhãn")).toThrow(/no edge/);
   });
 });
 

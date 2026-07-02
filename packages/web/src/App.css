@@ -466,6 +466,36 @@ body {
   opacity: 0;
 }
 
+/* Selected leaf (DGC-78): visual editing makes selection consequential (the
+   Delete key removes it), so the outline must be unmistakable. */
+.react-flow__node.selected .arch-node {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), var(--node-glow), var(--node-shadow);
+}
+
+/* Inline rename input (DGC-78): swapped in for the label on double-click.
+   Inherits the node/group typography; `nodrag` (class set in EditableLabel)
+   keeps React Flow from starting a drag from inside it. */
+.arch-rename-input {
+  font: inherit;
+  color: var(--text-strong);
+  background: rgba(5, 8, 14, 0.65);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 1px 6px;
+  outline: none;
+  flex: 1;
+  min-width: 48px;
+  width: 100%;
+}
+/* Group title flavor: match the uppercase corner label's size, but keep the
+   typed text as-is (renames are case-sensitive names). */
+.arch-group__title .arch-rename-input {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
 /* Pinned marker (T30): a small accent dot in the corner of any node whose
    position was manually dragged (an override sidecar entry). */
 .react-flow__node.arch-node--pinned::after {
@@ -771,4 +801,31 @@ body {
   font-weight: 600;
   color: var(--text-dim);
   pointer-events: none;
+}
+
+/* Visual-editing receipt toast (DGC-78) — bottom-center, above the status
+   pill; auto-clears (EDIT_TOAST_TIMEOUT_MS in App). Error flavor for server
+   rejections (duplicate rename, unknown id, …). */
+.edit-toast {
+  position: fixed;
+  bottom: 52px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 12;
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel-translucent);
+  backdrop-filter: blur(6px);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-strong);
+  pointer-events: none;
+  white-space: nowrap;
+}
+.edit-toast--error {
+  border-color: rgba(255, 107, 107, 0.55);
+  color: #ff8484;
 }

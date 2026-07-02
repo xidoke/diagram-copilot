@@ -121,6 +121,12 @@ export interface CreateServerOptions {
    */
   lifecycleHandler?: OpenRequestHandler;
   /**
+   * Handler for the visual-editing ops route (`POST /api/edit`, DGC-78) —
+   * built with `createEditApiHandler` from `edit-executor.js`. Omitted →
+   * route inert, same opt-in pattern as `openHandler`.
+   */
+  editHandler?: OpenRequestHandler;
+  /**
    * Handler for a schema-valid `snapshot-response` frame from a connected
    * client (T24) — typically the snapshot broker's `resolve`, wired by the
    * CLI entry. Omitted → snapshot responses are logged and dropped.
@@ -174,6 +180,7 @@ export function createServer(options: CreateServerOptions): ServerHandle {
       options.templatesHandler,
       options.lifecycleHandler,
       options.dslHandler,
+      options.editHandler,
     ),
   );
   const clients = new Set<WebSocket>();
