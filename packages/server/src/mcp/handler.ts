@@ -33,6 +33,8 @@ import { registerDiagramTools } from "./tools/diagram.js";
 import { registerSnapshotDiagramTool } from "./tools/snapshot-steps.js";
 import { registerSnapshotTool, type SnapshotOps } from "./tools/snapshot.js";
 import { registerHistoryTools } from "./tools/history.js";
+import { registerNotesTools } from "./tools/notes.js";
+import type { NotesStore } from "../notes.js";
 
 /** MCP server identity advertised in the `initialize` result. */
 export const MCP_SERVER_NAME = "diagram-copilot";
@@ -73,6 +75,14 @@ export interface McpHandlerOptions {
    * tools out entirely.
    */
   getHistory?: () => HistoryStore | null;
+  /**
+   * Read/write store for `get_notes` / `set_notes` (DGC-63) — the shared
+   * {@link createNotesStore} instance bound to the workspace dir. The
+   * workspace path is fixed at startup, so this is a plain store rather than a
+   * getter. Registered only alongside a workspace; omit to leave the notes
+   * tools out entirely.
+   */
+  notes?: NotesStore;
 }
 
 /** A `node:http` request handler for the `/mcp` route. */
@@ -115,6 +125,10 @@ function registerTools(server: McpServer, options: McpHandlerOptions): void {
     // History (undo/redo) tools plug in only when a history store is also wired.
     if (options.getHistory !== undefined) {
       registerHistoryTools(server, options.getWorkspace, options.getHistory);
+    }
+    // Notes (get_notes/set_notes, DGC-63) plug in only when a notes store is wired.
+    if (options.notes !== undefined) {
+      registerNotesTools(server, options.getWorkspace, options.notes);
     }
   }
 

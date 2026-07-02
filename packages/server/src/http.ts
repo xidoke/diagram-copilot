@@ -12,6 +12,7 @@ import path from "node:path";
 import { EXPORT_PATH, handleExportRequest } from "./export/save.js";
 import type { WorkspaceOps } from "./workspace/watcher.js";
 import { LAYOUT_API_PREFIX, type LayoutApiHandler } from "./layout-overrides.js";
+import { NOTES_API_PREFIX, type NotesApiHandler } from "./notes.js";
 import { UNDO_PATH } from "./history/http.js";
 
 /**
@@ -244,6 +245,7 @@ export function createRequestHandler(
   openHandler?: OpenRequestHandler,
   apiHandler?: LayoutApiHandler,
   undoHandler?: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>,
+  notesHandler?: NotesApiHandler,
 ): (req: IncomingMessage, res: ServerResponse) => void {
   return (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
@@ -273,6 +275,14 @@ export function createRequestHandler(
     // before the GET/HEAD-only guard below so its PUT/DELETE verbs reach it.
     if (apiHandler && url.pathname.startsWith(LAYOUT_API_PREFIX)) {
       void apiHandler(req, res);
+      return;
+    }
+
+    // Per-diagram markdown notes API (`/api/notes/:name`, GET/PUT). Same
+    // placement rationale as the layout branch — its PUT verb must reach it
+    // before the GET/HEAD-only guard below.
+    if (notesHandler && url.pathname.startsWith(NOTES_API_PREFIX)) {
+      void notesHandler(req, res);
       return;
     }
 

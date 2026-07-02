@@ -1,0 +1,170 @@
+/*
+ * Slide-over notes panel (DGC-63) — the right-edge mirror of the DSL drawer
+ * (theme B: dark blueprint). The panel overlays the canvas from the right; the
+ * canvas never resizes. A vertical toggle tab rides the panel's left edge so
+ * it's reachable whether the panel is open or closed.
+ */
+
+.notes {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 20;
+  height: 100vh;
+  width: 440px;
+  /* Slid off-screen by default; the toggle tab (left: -32px) still pokes out
+     past the viewport's right edge so it stays clickable. */
+  transform: translateX(100%);
+  transition: transform 200ms ease;
+  /* Let the toggle tab render outside the panel box. */
+  overflow: visible;
+  pointer-events: none;
+}
+.notes--open {
+  transform: translateX(0);
+}
+
+/* The actual surface — a touch darker/denser than the canvas so it reads as a
+   distinct panel layered over the diagram. */
+.notes-panel {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.45);
+  pointer-events: auto;
+}
+
+/* Vertical toggle tab, riding the panel's left edge (moves with the panel). */
+.notes-toggle {
+  position: absolute;
+  top: 50%;
+  left: -32px;
+  transform: translateY(-50%);
+  width: 32px;
+  min-height: 92px;
+  padding: 10px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-right: none;
+  border-radius: 10px 0 0 10px;
+  color: var(--text-dim);
+  cursor: pointer;
+  pointer-events: auto;
+}
+.notes-toggle:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+.notes-toggle__glyph {
+  font-size: 15px;
+  line-height: 1;
+}
+.notes-toggle__text {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  writing-mode: vertical-rl;
+}
+
+/* Header: diagram name + save status, plus the Edit/Preview toggle. */
+.notes-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.notes-header__title {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.notes-header__name {
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.notes-header__name--empty {
+  color: var(--text-dim);
+  font-weight: 500;
+  font-style: italic;
+}
+.notes-header__status {
+  flex: none;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* Edit/Preview pill toggle. */
+.notes-tab {
+  flex: none;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+.notes-tab:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+/* Body fills the rest; textarea/preview each take the full height. */
+.notes-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.notes-textarea {
+  flex: 1;
+  width: 100%;
+  resize: none;
+  border: none;
+  outline: none;
+  padding: 12px 14px;
+  background: var(--panel);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.notes-textarea::placeholder {
+  color: var(--text-dim);
+}
+.notes-textarea:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.notes-preview {
+  flex: 1;
+  margin: 0;
+  overflow: auto;
+  padding: 12px 14px;
+  background: var(--panel);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

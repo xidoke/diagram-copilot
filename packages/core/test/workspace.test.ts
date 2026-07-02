@@ -22,6 +22,9 @@ describe("workspace file conventions", () => {
 
   it("isArchFile rejects everything else", () => {
     expect(isArchFile("news-feed.layout.json")).toBe(false);
+    // A diagram's markdown notes sidecar (DGC-63) is NOT a diagram, so it never
+    // shows up in list_diagrams / the picker.
+    expect(isArchFile("news-feed.notes.md")).toBe(false);
     expect(isArchFile("notes.txt")).toBe(false);
     expect(isArchFile("news-feed.arch.bak")).toBe(false);
     expect(isArchFile(".arch")).toBe(false); // no diagram name

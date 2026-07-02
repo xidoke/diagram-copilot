@@ -18,6 +18,7 @@ import {
 } from "@diagram-copilot/core";
 import { createRequestHandler, type OpenRequestHandler } from "./http.js";
 import type { LayoutApiHandler } from "./layout-overrides.js";
+import type { NotesApiHandler } from "./notes.js";
 import type { McpRequestHandler } from "./mcp/handler.js";
 
 /** WebSocket upgrade path. Everything else on the port is HTTP. */
@@ -61,6 +62,13 @@ export interface CreateServerOptions {
    * e.g. most tests). Same mutable-wiring pattern as {@link mcpHandler}.
    */
   apiHandler?: LayoutApiHandler;
+  /**
+   * Handler for the per-diagram notes API (`/api/notes/:name`), built with
+   * `createNotesApiHandler` from `notes.ts` (DGC-63). Omitted → the route
+   * falls through to the static pipeline (servers without a workspace, e.g.
+   * most tests). Same mutable-wiring pattern as {@link apiHandler}.
+   */
+  notesHandler?: NotesApiHandler;
   /**
    * Handler for `POST /api/undo` (T31), built with `createUndoApiHandler`
    * from `history/http.ts`. Owns its own method policy. Omitted → the route
@@ -140,6 +148,7 @@ export function createServer(options: CreateServerOptions): ServerHandle {
       options.openHandler,
       options.apiHandler,
       options.undoHandler,
+      options.notesHandler,
     ),
   );
   const clients = new Set<WebSocket>();
