@@ -34,6 +34,15 @@ export function defaultWorkspaceDir(): string {
 }
 
 /**
+ * Default extra whitelist root for `export_diagram` when no `--export-root` is
+ * given: an Obsidian iCloud vault. `~` is expanded by the export tool at call
+ * time (see `expandTilde` in `mcp/tools/export-file.ts`), so it is kept literal
+ * here. The resolved `--export-dir` is ALWAYS a root too (added in `main`).
+ */
+export const DEFAULT_OBSIDIAN_VAULT_ROOT =
+  "~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian_Vault";
+
+/**
  * Locate the built web bundle relative to this module. Resolves to
  * `packages/web/dist` from both `src/` (tsx dev) and `dist/` (built bin).
  */
@@ -57,6 +66,13 @@ interface CliOptions {
   port: number;
   workspace: string;
   exportDir: string;
+  /**
+   * EXTRA whitelisted roots a caller-supplied `export_diagram` `path` may write
+   * into, beyond the always-allowed `exportDir`. From `--export-root`
+   * (repeatable) or the Obsidian vault default. May contain `~` — expanded by
+   * the export tool at call time.
+   */
+  exportRoots: string[];
 }
 
 /** Parse argv into validated CLI options, throwing a friendly error on bad input. */
@@ -67,6 +83,9 @@ export function parseCliArgs(argv: string[]): CliOptions {
       port: { type: "string" },
       workspace: { type: "string" },
       "export-dir": { type: "string" },
+      // Repeatable: each `--export-root DIR` adds a whitelist root for
+      // `export_diagram`. Absent → the Obsidian vault default.
+      "export-root": { type: "string", multiple: true },
     },
   });
 
@@ -83,7 +102,12 @@ export function parseCliArgs(argv: string[]): CliOptions {
   // so `--workspace foo` without `--export-dir` saves to `foo/exports`.
   const exportDir = values["export-dir"] ?? path.join(workspace, "exports");
 
-  return { port, workspace, exportDir };
+  // Extra whitelist roots for `export_diagram` beyond `exportDir` (which the
+  // tool always allows implicitly): the `--export-root` entries, or the
+  // Obsidian vault default when none are given.
+  const exportRoots = values["export-root"] ?? [DEFAULT_OBSIDIAN_VAULT_ROOT];
+
+  return { port, workspace, exportDir, exportRoots };
 }
 
 function reportPortInUse(port: number): void {
@@ -106,6 +130,7 @@ async function main(): Promise<void> {
 
   console.log(`[server] workspace: ${options.workspace}`);
   console.log(`[server] export dir: ${options.exportDir}`);
+  console.log(`[server] export roots: ${[options.exportDir, ...options.exportRoots].join(", ")}`);
 
   // `getWelcome` is wired to the server at creation time, but the watcher it
   // reads from is only created after `start()` succeeds (no point scanning
@@ -164,6 +189,9 @@ async function main(): Promise<void> {
       getHistory: () => history,
       // Notes read/write store for get_notes/set_notes (DGC-63).
       notes: notesStore,
+      // `export_diagram` (F2) — render-to-file destinations: default dir plus
+      // the whitelist a caller `path` may write into.
+      exportPaths: { dir: options.exportDir, roots: options.exportRoots },
     }),
     // `POST /api/open` (T36 / DGC-57) — diagram picker's open/create action.
     openHandler: createOpenHandler(() => watcher ?? null),

@@ -31,6 +31,9 @@ WORKFLOW (editing an existing diagram)
      each problem returns as "line X, col Y: message" — fix that exact
      line/col and call set_diagram again until it passes. (A brand-new
      diagram can skip straight to set_diagram.)
+  Draft with validate_dsl before set_diagram when making large changes: it
+  runs the same check and reports the same "line X, col Y" errors without
+  writing anything, so you can iterate before committing the whole document.
 
 1. direction (optional, one line, defaults to "right")
    direction right   // or: left, up, down
