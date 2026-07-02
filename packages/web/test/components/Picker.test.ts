@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { groupDiagrams } from "../../src/components/Picker";
+import { formatTemplateLabel, groupDiagrams } from "../../src/components/Picker";
 
 describe("groupDiagrams", () => {
   it("returns an empty list for an empty workspace", () => {
@@ -44,5 +44,21 @@ describe("groupDiagrams", () => {
       { root: "my.step", steps: [] },
       { root: "my.stepper", steps: [] },
     ]);
+  });
+});
+
+describe("formatTemplateLabel (DGC-66 / F6 — 'New from template ▸')", () => {
+  it("pluralizes node count normally", () => {
+    expect(formatTemplateLabel({ id: "news-feed", title: "News Feed", nodeCount: 12 })).toBe(
+      "News Feed · 12 nodes",
+    );
+  });
+
+  it("uses the singular 'node' for a count of exactly 1", () => {
+    expect(formatTemplateLabel({ id: "solo", title: "Solo", nodeCount: 1 })).toBe("Solo · 1 node");
+  });
+
+  it("uses the plural 'nodes' for a count of 0", () => {
+    expect(formatTemplateLabel({ id: "empty", title: "Empty", nodeCount: 0 })).toBe("Empty · 0 nodes");
   });
 });

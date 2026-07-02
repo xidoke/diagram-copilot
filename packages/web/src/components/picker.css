@@ -148,3 +148,40 @@
   color: var(--status-disconnected);
   border-color: var(--status-disconnected);
 }
+
+/* "New from template ▸" (DGC-66 / F6) — own block, separate from
+   `.picker__new` above, so it can be lifted/merged independently. */
+.picker__templates {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+.picker__templates-toggle {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 6px 8px;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.picker__templates-toggle:hover {
+  border-color: var(--border);
+  color: var(--text);
+  background: var(--group-accent-bg);
+}
+.picker__templates-toggle:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.picker__templates-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-left: 10px;
+}

@@ -86,6 +86,68 @@ async function requestOpen(name: string): Promise<OpenApiResult> {
   return parsed;
 }
 
+// ---------------------------------------------------------------------------
+// "New from template ▸" (DGC-66 / F6) — a submenu under the picker dropdown
+// listing the fixture templates shipped with the server (`GET
+// /api/templates`), fetched lazily the first time the submenu is opened.
+// Picking one prompts for a diagram name (default: the template id) and
+// POSTs `{ id, name }` to `/api/templates/use`, which seeds a new diagram
+// with the fixture's DSL and activates it — same close-on-success behavior
+// as the plain "New diagram…" input above. Kept as its own block (state,
+// pure helpers, JSX) so it stays easy to lift/merge independently of the
+// rest of the dropdown.
+// ---------------------------------------------------------------------------
+
+/** REST endpoint listing the template gallery. */
+const TEMPLATES_LIST_URL = "/api/templates";
+/** REST endpoint that creates+activates a diagram from a template. */
+const TEMPLATES_USE_URL = "/api/templates/use";
+
+/** One template entry — structurally mirrors the server's `TemplateSummary`. */
+export interface TemplateSummary {
+  id: string;
+  title: string;
+  nodeCount: number;
+}
+
+/** Shape returned by `POST /api/templates/use` — mirrors `OpenApiResult` minus `created`. */
+interface UseTemplateApiResult {
+  ok: boolean;
+  name: string;
+  version: number;
+  error?: string;
+}
+
+/**
+ * Menu label for a template entry, e.g. `"News Feed · 12 nodes"`. Pure — no
+ * DOM — so it's testable without rendering (matches `groupDiagrams` /
+ * `statusPillContent`'s split).
+ */
+export function formatTemplateLabel(template: TemplateSummary): string {
+  const nodeWord = template.nodeCount === 1 ? "node" : "nodes";
+  return `${template.title} · ${template.nodeCount} ${nodeWord}`;
+}
+
+async function requestTemplates(): Promise<TemplateSummary[]> {
+  const res = await fetch(TEMPLATES_LIST_URL);
+  if (!res.ok) throw new Error(`Could not load templates (HTTP ${res.status}).`);
+  const parsed = (await res.json().catch(() => null)) as { templates?: TemplateSummary[] } | null;
+  return parsed?.templates ?? [];
+}
+
+async function requestUseTemplate(id: string, name: string): Promise<UseTemplateApiResult> {
+  const res = await fetch(TEMPLATES_USE_URL, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ id, name }),
+  });
+  const parsed = (await res.json().catch(() => null)) as UseTemplateApiResult | null;
+  if (!parsed) {
+    return { ok: false, name, version: 0, error: `Unexpected response (HTTP ${res.status}).` };
+  }
+  return parsed;
+}
+
 /** How long an error toast stays visible before auto-clearing (matches ExportMenu's STATUS_TIMEOUT_MS). */
 const ERROR_TIMEOUT_MS = 2500;
 
@@ -103,6 +165,13 @@ export function Picker({ workspace, name, version }: PickerProps) {
   const [newName, setNewName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // "New from template ▸" submenu state — separate from the plain
+  // "New diagram…" input above (see the block comment near the top of this
+  // file). `templates: null` means "not fetched yet"; fetched lazily on
+  // first expand, not eagerly with the rest of the dropdown.
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [templates, setTemplates] = useState<TemplateSummary[] | null>(null);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Close on outside click / Escape — same behavior as ExportMenu's dropdown.
@@ -130,6 +199,8 @@ export function Picker({ workspace, name, version }: PickerProps) {
     if (!open) {
       setNewName("");
       setError(null);
+      setTemplatesOpen(false);
+      setTemplates(null);
     }
   }, [open]);
 
@@ -166,6 +237,49 @@ export function Picker({ workspace, name, version }: PickerProps) {
     event.preventDefault();
     void handleOpen(newName);
   };
+
+  // Toggle the "New from template ▸" submenu, fetching the gallery lazily on
+  // first expand (not eagerly with the rest of the dropdown, per the fetch
+  // being scoped to when the submenu is actually opened).
+  const handleToggleTemplates = useCallback(() => {
+    setTemplatesOpen((wasOpen) => {
+      const nowOpen = !wasOpen;
+      if (nowOpen && templates === null && !templatesLoading) {
+        setTemplatesLoading(true);
+        setError(null);
+        requestTemplates()
+          .then((list) => setTemplates(list))
+          .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+          .finally(() => setTemplatesLoading(false));
+      }
+      return nowOpen;
+    });
+  }, [templates, templatesLoading]);
+
+  const handleUseTemplate = useCallback(
+    async (template: TemplateSummary) => {
+      if (busy) return;
+      const typed = window.prompt(`Diagram name for "${template.title}":`, template.id);
+      if (typed === null) return; // user cancelled the prompt
+      const trimmed = typed.trim();
+      if (!trimmed) return;
+      setBusy(true);
+      setError(null);
+      try {
+        const result = await requestUseTemplate(template.id, trimmed);
+        if (!result.ok) {
+          setError(result.error ?? `Could not create "${trimmed}" from "${template.id}".`);
+          return;
+        }
+        setOpen(false);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy],
+  );
 
   const groups = groupDiagrams(workspace?.diagrams ?? []);
   const active = workspace?.active;
@@ -226,6 +340,42 @@ export function Picker({ workspace, name, version }: PickerProps) {
               disabled={busy}
             />
           </form>
+          {/* "New from template ▸" (DGC-66/F6) — separate block from the plain
+              "New diagram…" form above; see the block comment near the top of
+              this file for why it's split out this way. */}
+          <div className="picker__templates">
+            <button
+              type="button"
+              className="picker__templates-toggle"
+              aria-haspopup="menu"
+              aria-expanded={templatesOpen}
+              disabled={busy}
+              onClick={handleToggleTemplates}
+            >
+              New from template {templatesOpen ? "▾" : "▸"}
+            </button>
+            {templatesOpen && (
+              <div className="picker__templates-list" role="menu">
+                {templatesLoading && <div className="picker__empty">Loading templates…</div>}
+                {!templatesLoading && templates !== null && templates.length === 0 && (
+                  <div className="picker__empty">No templates available.</div>
+                )}
+                {!templatesLoading &&
+                  templates?.map((template) => (
+                    <button
+                      key={template.id}
+                      type="button"
+                      role="menuitem"
+                      className="picker__item"
+                      disabled={busy}
+                      onClick={() => void handleUseTemplate(template)}
+                    >
+                      <span className="picker__name">{formatTemplateLabel(template)}</span>
+                    </button>
+                  ))}
+              </div>
+            )}
+          </div>
           {error && (
             <div className="picker__status picker__status--error" role="status">
               {error}

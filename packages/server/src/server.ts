@@ -19,6 +19,7 @@ import {
 import { createRequestHandler, type OpenRequestHandler } from "./http.js";
 import type { LayoutApiHandler } from "./layout-overrides.js";
 import type { NotesApiHandler } from "./notes.js";
+import type { TemplatesApiHandler } from "./templates.js";
 import type { McpRequestHandler } from "./mcp/handler.js";
 
 /** WebSocket upgrade path. Everything else on the port is HTTP. */
@@ -75,6 +76,13 @@ export interface CreateServerOptions {
    * falls through to the static pipeline.
    */
   undoHandler?: (req: http.IncomingMessage, res: http.ServerResponse) => void | Promise<void>;
+  /**
+   * Handler for the template gallery API (`/api/templates`,
+   * `/api/templates/use`, DGC-66/F6), built with `createTemplatesApiHandler`
+   * from `templates.ts`. Omitted → the route falls through to the static
+   * pipeline, same opt-in pattern as `notesHandler`/`apiHandler`.
+   */
+  templatesHandler?: TemplatesApiHandler;
   /**
    * Handler for a schema-valid `update` frame from a connected client,
    * receiving the parsed message and the sending socket (so the workspace
@@ -149,6 +157,7 @@ export function createServer(options: CreateServerOptions): ServerHandle {
       options.apiHandler,
       options.undoHandler,
       options.notesHandler,
+      options.templatesHandler,
     ),
   );
   const clients = new Set<WebSocket>();
