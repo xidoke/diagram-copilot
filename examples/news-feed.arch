@@ -1,0 +1,55 @@
+// news-feed.arch — golden fixture (DGC-31)
+//
+// A deeper "design a news feed" system-design sketch than url-shortener.arch:
+// a public edge (CDN + load balancer) fronting a VPC that holds two nested
+// tiers — the stateless "Feed service" tier and the stateful "Data stores"
+// tier — plus a Kafka topic shared by both for the fan-out write path.
+//
+// Fan-out-on-write flow (a user publishes a post):
+//   Client -> CDN -> LB -> API Gateway -> Auth Service        (verify token)
+//                                       -> Fanout Worker
+//   Fanout Worker -> Postgres                                 (persist post)
+//                 -> Redis Cache                               (write feed cache)
+//                 -> Kafka Queue                                (enqueue fanout job)
+//   Kafka Queue -> Notification Service                       (consume, push to followers)
+//   API Gateway -> Search Index                                (index post for search)
+//               -> Object Storage                              (upload attached media)
+
+direction right
+
+Client [icon: monitor]
+CDN [icon: cloud, color: purple]
+LB [icon: network, color: blue]
+
+VPC {
+  Feed service {
+    API Gateway [icon: server, color: orange]
+    Auth Service [icon: lock, color: gray]
+    Fanout Worker [icon: cpu, color: yellow]
+    Notification Service [icon: bell, color: pink]
+  }
+
+  Data stores {
+    Redis Cache [icon: redis, color: red]
+    Postgres [icon: postgresql, color: blue]
+    Object Storage [icon: hard-drive, color: gray]
+    Search Index [icon: elasticsearch, color: teal]
+  }
+
+  Kafka Queue [icon: apachekafka, color: black]
+}
+
+Client > CDN
+CDN > LB
+LB > API Gateway: HTTPS request
+
+API Gateway > Auth Service: verify token
+API Gateway > Fanout Worker: publish post
+API Gateway > Search Index: index post
+API Gateway > Object Storage: upload media
+
+Fanout Worker > Postgres: persist post
+Fanout Worker > Redis Cache: write feed cache
+Fanout Worker > Kafka Queue: enqueue fanout job
+
+Kafka Queue > Notification Service: consume fanout job

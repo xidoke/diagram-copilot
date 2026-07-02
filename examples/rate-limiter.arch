@@ -1,0 +1,32 @@
+// rate-limiter.arch — golden fixture (DGC-31)
+//
+// The "design a rate limiter" system-design sketch: a request enters at the
+// Gateway, is checked against a token-bucket counter kept in Redis by the
+// Rate Limiter, and — only if a token remains — is forwarded to the API
+// backend. Also exercises a Vietnamese node name ("Người dùng" = "User"),
+// used here as the client.
+//
+// Request flow:
+//   Người dùng -> Gateway            (gửi yêu cầu / send request)
+//   Gateway -> Rate Limiter          (kiểm tra giới hạn / check the limit)
+//   Rate Limiter -> Rules Cache      (đọc/ghi bucket còn lại trong Redis)
+//   Rate Limiter -> API Backend      (cho phép nếu còn quota / forward if allowed)
+
+direction right
+
+Người dùng [icon: monitor]
+
+Edge {
+  Gateway [icon: shield, color: blue]
+  Rate Limiter [icon: cpu, color: orange]
+  Rules Cache [icon: redis, color: red]
+}
+
+Backend {
+  API Backend [icon: server, color: green]
+}
+
+Người dùng > Gateway: gửi yêu cầu
+Gateway > Rate Limiter: kiểm tra giới hạn
+Rate Limiter > Rules Cache: đọc/ghi bucket
+Rate Limiter > API Backend: cho phép nếu còn quota
