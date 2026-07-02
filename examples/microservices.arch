@@ -1,0 +1,244 @@
+// microservices.arch — golden fixture (T-PERF/DGC-76)
+//
+// Một hệ microservices "thật" cỡ vừa: dùng làm fixture đo hiệu năng layout
+// (~60 node, ~12 group lồng 3 cấp, ~80 cạnh có nhãn) — KHÔNG phải sinh tự
+// động lúc runtime, viết tay để giống một sơ đồ kiến trúc thật của một sàn
+// thương mại điện tử.
+//
+// Cấu trúc (Platform bọc 9 nhóm con, 2 domain có thêm nhóm dữ liệu lồng cấp
+// 3 — Users Data / Orders Data):
+//   Edge (biên: CDN, LB, WAF, API Gateway, Auth Gateway, Edge Cache)
+//   API Tier (Public/Internal API, GraphQL, rate limit, docs, analytics)
+//   Users Domain + Users Data      (hồ sơ người dùng)
+//   Orders Domain + Orders Data    (đơn hàng, giỏ hàng, vận chuyển)
+//   Payments Domain                (thanh toán, gian lận, sổ cái)
+//   Inventory Domain               (tồn kho, kho hàng, nhà cung cấp)
+//   Data Tier                      (kho dữ liệu dùng chung)
+//   Messaging                      (Kafka + fan-out sự kiện)
+//   Observability                  (Prometheus/Grafana/log/trace/CI)
+//
+// Luồng chính (một khách đặt hàng):
+//   Web/Mobile Client -> LB -> WAF -> API Gateway -> Public API
+//     -> Users Service (lấy hồ sơ) -> Orders Service (tạo đơn)
+//     -> Payments Service (thanh toán) -> Inventory Service (giữ tồn kho)
+//   Orders Service -> Kafka Broker -> Event Bus -> Notification Worker
+//     -> Email Service (báo xác nhận đơn hàng cho khách)
+
+direction right
+
+// Khách hàng — đứng ngoài Platform, giống news-feed.arch để phía ngoài "biên
+// công cộng" tách bạch khỏi hạ tầng nội bộ.
+Web Client [icon: monitor, color: blue]
+Mobile Client [icon: smartphone, color: blue]
+Partner Client [icon: globe, color: gray]
+
+Platform {
+  // Biên: CDN + cân bằng tải + tường lửa ứng dụng trước khi vào API Gateway.
+  Edge {
+    CDN [icon: cloud, color: purple]
+    Load Balancer [icon: network, color: blue]
+    WAF [icon: shield, color: red]
+    API Gateway [icon: server, color: orange]
+    Auth Gateway [icon: lock, color: gray]
+    Edge Cache [icon: redis, color: red]
+  }
+
+  // Tầng API: REST công khai/nội bộ, GraphQL hợp nhất, giới hạn tần suất.
+  API Tier {
+    Public API [icon: server, color: orange]
+    Internal API [icon: server, color: orange]
+    GraphQL Gateway [icon: graphql, color: pink]
+    Rate Limiter [icon: cpu, color: yellow]
+    API Docs Portal [icon: webhook, color: teal]
+    API Analytics [icon: layers, color: teal]
+  }
+
+  // Domain người dùng: hồ sơ, tuỳ chọn thông báo, dữ liệu riêng bên dưới.
+  Users Domain {
+    Users Service [icon: server, color: green]
+    Users Worker [icon: cpu, color: green]
+    Profile Service [icon: user, color: green]
+    Notification Preferences Service [icon: bell, color: green]
+
+    Users Data {
+      Users DB [icon: postgresql, color: blue]
+      Users Cache [icon: redis, color: red]
+    }
+  }
+
+  // Domain đơn hàng: giỏ hàng, vận chuyển, dữ liệu riêng bên dưới.
+  Orders Domain {
+    Orders Service [icon: server, color: orange]
+    Orders Worker [icon: cpu, color: orange]
+    Cart Service [icon: box, color: orange]
+    Shipping Service [icon: router, color: orange]
+
+    Orders Data {
+      Orders DB [icon: postgresql, color: blue]
+      Orders Cache [icon: redis, color: red]
+    }
+  }
+
+  // Domain thanh toán: chống gian lận, sổ cái, cổng thanh toán bên ngoài.
+  Payments Domain {
+    Payments Service [icon: server, color: purple]
+    Payments Worker [icon: cpu, color: purple]
+    Fraud Detection [icon: shield, color: purple]
+    Ledger Service [icon: database, color: purple]
+    Payment Gateway [icon: stripe, color: purple]
+    Reconciliation Worker [icon: cpu, color: purple]
+  }
+
+  // Domain tồn kho: đồng bộ kho hàng và nhà cung cấp.
+  Inventory Domain {
+    Inventory Service [icon: server, color: teal]
+    Inventory Worker [icon: cpu, color: teal]
+    Warehouse Sync [icon: router, color: teal]
+    Supplier Sync [icon: router, color: teal]
+    Inventory DB [icon: mysql, color: blue]
+    Inventory Cache [icon: redis, color: red]
+  }
+
+  // Data tier dùng chung giữa các domain (không thuộc riêng domain nào).
+  Data Tier {
+    Primary Postgres [icon: postgresql, color: blue]
+    Analytics Warehouse [icon: database, color: blue]
+    Search Index [icon: elasticsearch, color: teal]
+    Object Storage [icon: hard-drive, color: gray]
+    Config Store [icon: database, color: gray]
+    Session Store [icon: redis, color: red]
+    Backup Store [icon: hard-drive, color: gray]
+  }
+
+  // Nhắn tin bất đồng bộ: Kafka làm xương sống fan-out sự kiện.
+  Messaging {
+    Kafka Broker [icon: apachekafka, color: yellow]
+    Schema Registry [icon: database, color: yellow]
+    Event Bus [icon: webhook, color: yellow]
+    Notification Worker [icon: bell, color: pink]
+    Email Service [icon: mail, color: pink]
+    Dead Letter Queue [icon: list, color: gray]
+    Stream Processor [icon: cpu, color: yellow]
+  }
+
+  // Quan sát hệ thống: metrics, log, trace, cảnh báo, pipeline CI.
+  Observability {
+    Prometheus [icon: prometheus, color: orange]
+    Grafana [icon: grafana, color: orange]
+    Log Aggregator [icon: layers, color: gray]
+    Tracing Collector [icon: network, color: gray]
+    Alertmanager [icon: bell, color: red]
+    Health Check Service [icon: shield, color: green]
+    CI Pipeline [icon: githubactions, color: gray]
+  }
+}
+
+// --- Lối vào: client -> biên -> API Gateway --------------------------------
+Web Client > CDN: static asset request
+Web Client > Load Balancer: HTTPS request
+Mobile Client > Load Balancer: HTTPS request
+Partner Client > API Gateway: partner API call
+CDN > Load Balancer: cache miss passthrough
+Load Balancer > WAF: inspect traffic
+WAF > API Gateway: forward clean traffic
+API Gateway > Auth Gateway: verify token
+API Gateway > Edge Cache: check rate limit state
+Auth Gateway > Edge Cache: cache session lookup
+
+// --- Biên -> tầng API --------------------------------------------------------
+API Gateway > Public API, Internal API: route request
+Auth Gateway > Public API: attach identity
+Public API > GraphQL Gateway: federated query
+Public API > Rate Limiter: check quota
+Internal API > Rate Limiter: check quota
+GraphQL Gateway > API Docs Portal: schema introspection
+Public API > API Analytics: log request
+Internal API > API Analytics: log request
+
+// --- Tầng API -> các domain nghiệp vụ ---------------------------------------
+Public API > Users Service: get profile
+Public API > Orders Service: place order
+Public API > Payments Service: charge card
+Public API > Inventory Service: check stock
+GraphQL Gateway > Users Service: resolve user
+GraphQL Gateway > Orders Service: resolve orders
+Internal API > Inventory Service: internal stock sync
+
+// --- Users Domain nội bộ -----------------------------------------------------
+Users Service > Users Worker: async profile update
+Users Service > Profile Service: fetch profile fields
+Users Service > Notification Preferences Service: read prefs
+Users Service > Users DB: read write user
+Users Worker > Users DB: batch update
+Users Service > Users Cache: cache profile
+Profile Service > Users Cache: cache avatar url
+
+// --- Orders Domain nội bộ ----------------------------------------------------
+Orders Service > Orders Worker: async fulfillment
+Orders Service > Cart Service: checkout cart
+Orders Service > Shipping Service: create shipment
+Orders Service > Orders DB: persist order
+Orders Worker > Orders DB: update status
+Cart Service > Orders Cache: cache cart
+Orders Service > Orders Cache: cache order summary
+
+// --- Payments Domain nội bộ --------------------------------------------------
+Payments Service > Payments Worker: async settle
+Payments Service > Fraud Detection: score transaction
+Payments Service > Ledger Service: record entry
+Payments Service > Payment Gateway: charge card
+Payments Worker > Reconciliation Worker: nightly reconcile
+Payments Worker > Ledger Service: settle entry
+
+// --- Inventory Domain nội bộ --------------------------------------------------
+Inventory Service > Inventory Worker: async stock recount
+Inventory Service > Warehouse Sync: sync warehouse levels
+Inventory Service > Supplier Sync: sync supplier feed
+Inventory Service > Inventory DB: read write stock
+Inventory Worker > Inventory DB: batch recount
+Inventory Service > Inventory Cache: cache stock levels
+
+// --- Cạnh xuyên domain (giữ tồn kho, uỷ quyền thanh toán) -------------------
+Orders Service > Payments Service: authorize payment
+Orders Service > Inventory Service: reserve stock
+Payments Service > Orders Service: payment confirmed
+
+// --- Các domain -> Data Tier dùng chung --------------------------------------
+Users Service > Search Index: index profile
+Orders Service > Search Index: index order
+Orders Service > Analytics Warehouse: stream order events
+Payments Service > Config Store: read feature flags
+Inventory Service > Config Store: read feature flags
+API Gateway > Session Store: validate session
+Auth Gateway > Session Store: write session
+Primary Postgres > Backup Store: nightly snapshot
+Orders DB > Backup Store: nightly snapshot
+Users Service > Object Storage: upload avatar
+Orders Service > Object Storage: upload invoice pdf
+
+// --- Các domain -> Messaging (fan-out sự kiện qua Kafka) --------------------
+Orders Service > Kafka Broker: publish order.created
+Payments Service > Kafka Broker: publish payment.settled
+Inventory Service > Kafka Broker: publish stock.updated
+Users Service > Kafka Broker: publish user.updated
+Kafka Broker > Schema Registry: validate schema
+Kafka Broker > Event Bus: fan out event
+Kafka Broker > Stream Processor: consume for analytics
+Event Bus > Notification Worker: consume notification event
+Event Bus > Dead Letter Queue: route failed event
+Notification Worker > Email Service: send email
+Notification Worker > Notification Preferences Service: check opt-in
+Stream Processor > Analytics Warehouse: write aggregates
+
+// --- Observability: scrape/collect/deploy (rải nhiều cạnh fan-in) ----------
+Prometheus > Users Service, Orders Service, Payments Service, Inventory Service: scrape metrics
+Grafana > Prometheus: query metrics
+Log Aggregator > API Gateway: collect logs
+Log Aggregator > Public API: collect logs
+Tracing Collector > Public API: collect traces
+Tracing Collector > Orders Service: collect traces
+Alertmanager > Prometheus: receive alerts
+Health Check Service > Load Balancer: report health
+Health Check Service > API Gateway: report health
+CI Pipeline > API Gateway: deploy
+CI Pipeline > Orders Service: deploy

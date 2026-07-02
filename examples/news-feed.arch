@@ -39,7 +39,7 @@ VPC {
   Kafka Queue [icon: apachekafka, color: black]
 }
 
-Client > CDN
+Client --> CDN
 CDN > LB
 LB > API Gateway: HTTPS request
 

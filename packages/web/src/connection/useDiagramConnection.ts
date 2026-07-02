@@ -13,8 +13,25 @@ import { createConnectionManager, type ConnectionManager } from "./connectionMan
 import { initialConnectionState } from "./messageReducer.js";
 import type { DiagramConnectionState } from "./types.js";
 
-/** Default WS endpoint when `VITE_WS_URL` isn't set (see `.env` / vite config). */
+/**
+ * Default WS endpoint when `VITE_WS_URL` isn't set (see `.env` / vite config).
+ * Kept as the dev-mode fallback: the vite dev server (:4700) has no WS proxy,
+ * so it targets the default server port directly.
+ */
 export const DEFAULT_WS_URL = "ws://localhost:4747/ws";
+
+/**
+ * Same-origin WS endpoint — used when the bundle is SERVED BY the
+ * diagram-copilot server itself (production/standalone). Deriving from
+ * `location` instead of the 4747 literal means `--port 4949` (or any custom
+ * port) connects to its own server rather than whatever holds 4747 — a real
+ * cross-instance data leak found while recording the README GIF against a
+ * standalone server with the main server still running.
+ */
+function sameOriginWsUrl(): string {
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${protocol}//${window.location.host}/ws`;
+}
 
 /**
  * Connection state plus an outbound `send`. The hook return is a superset of
@@ -28,7 +45,11 @@ export interface DiagramConnection extends DiagramConnectionState {
 
 function resolveWsUrl(): string {
   const fromEnv = import.meta.env.VITE_WS_URL as string | undefined;
-  return fromEnv ?? DEFAULT_WS_URL;
+  if (fromEnv) return fromEnv;
+  // Production bundle (`vite build`) is always served by the server itself →
+  // same origin. Dev (`vite dev` on :4700) keeps the 4747 default.
+  if (import.meta.env.PROD) return sameOriginWsUrl();
+  return DEFAULT_WS_URL;
 }
 
 /**
