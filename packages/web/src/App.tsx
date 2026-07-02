@@ -4,6 +4,7 @@ import {
   Background,
   BackgroundVariant,
   Controls,
+  MiniMap,
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
@@ -19,6 +20,7 @@ import { layoutDiagram } from "@diagram-copilot/layout";
 import { EmptyState, shouldShowEmptyState } from "./components/EmptyState.js";
 import { ExportMenu } from "./components/ExportMenu.js";
 import { Picker } from "./components/Picker.js";
+import { SearchBox } from "./components/SearchBox.js";
 import { StatusPill } from "./components/StatusPill.js";
 import { StepsNav } from "./components/StepsNav.js";
 import { Toolbar } from "./components/Toolbar.js";
@@ -45,6 +47,10 @@ const FIT_VIEW_DEBOUNCE_MS = 100;
 /** How long an ELK layout pass must run before the "⋯ layout" chip appears —
  *  fast layouts (the common case) never flash it. */
 const LAYOUT_INDICATOR_DELAY_MS = 200;
+
+/** MiniMap (DGC-64/F4) only earns its screen space once a diagram is big
+ *  enough that the canvas can't be taken in at a glance. */
+const MINIMAP_MIN_NODES = 8;
 
 const nodeTypes = { [ARCH_NODE_TYPE]: ArchNode, [ARCH_GROUP_TYPE]: ArchGroup };
 const edgeTypes = { [ELK_EDGE_TYPE]: ElkEdge };
@@ -227,6 +233,13 @@ function DiagramCanvas() {
     return lastDiagram.version <= lastError.version;
   }, [lastError, lastDiagram]);
 
+  // Flattened id/label pairs for SearchBox (DGC-64/F4) — it needs nothing
+  // else from a React Flow node.
+  const searchNodes = useMemo(
+    () => flow.nodes.map((n) => ({ id: n.id, label: String((n.data as { label?: unknown }).label ?? n.id) })),
+    [flow.nodes],
+  );
+
   return (
     <div className="app-shell">
       {lastDiagram && <Picker workspace={workspace} name={lastDiagram.name} version={lastDiagram.version} />}
@@ -259,6 +272,16 @@ function DiagramCanvas() {
       >
         <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="var(--grid-dot)" />
         <Controls />
+        {flow.nodes.length > MINIMAP_MIN_NODES && (
+          <MiniMap
+            className="app-minimap"
+            pannable
+            zoomable
+            nodeColor="rgba(74, 163, 255, 0.35)"
+            maskColor="rgba(5, 8, 14, 0.75)"
+            bgColor="var(--panel-translucent)"
+          />
+        )}
       </ReactFlow>
       {workspace && shouldShowEmptyState(workspace, lastDiagram) && (
         <EmptyState workspace={workspace} send={send} />
@@ -271,6 +294,7 @@ function DiagramCanvas() {
       <StatusPill status={status} />
       <StepsNav workspace={workspace} />
       <UndoButton name={lastDiagram?.name ?? null} />
+      <SearchBox nodes={searchNodes} />
       <Drawer open={drawerOpen} onToggle={toggleDrawer} diagram={lastDiagram} send={send} lastError={lastError} />
       <NotesPanel open={notesOpen} onToggle={toggleNotes} name={diagramName} />
     </div>

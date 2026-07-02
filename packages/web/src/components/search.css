@@ -1,0 +1,98 @@
+/*
+ * Node search (DGC-64 / F4) — ⌘F / Ctrl+F opens a small pill top-center,
+ * same translucent theme-B chrome as the rest of the floating UI (picker,
+ * export menu, status pill). Sits below the error banner (top: 10px, ~24px
+ * tall) so the two never visually collide.
+ */
+.search-box {
+  position: fixed;
+  top: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: min(320px, calc(100vw - 48px));
+  background: var(--panel-translucent);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 10px;
+  backdrop-filter: blur(6px);
+  box-shadow: var(--node-glow);
+}
+
+.search-box__icon {
+  flex: none;
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.search-box__input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 12.5px;
+}
+.search-box__input:focus {
+  outline: none;
+}
+.search-box__input::placeholder {
+  color: var(--text-dim);
+}
+
+.search-box__count {
+  flex: none;
+  min-width: 28px;
+  text-align: right;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.search-box__close {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  color: var(--text-dim);
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+}
+.search-box__close:hover {
+  color: var(--text);
+  background: var(--group-accent-bg);
+}
+
+/* Found-node feedback: a brief accent ring + glow on whichever node a search
+   match centers on (DiagramCanvas → SearchBox toggles `arch-node--found` on
+   the node's `.react-flow__node` wrapper; see SearchBox.tsx). Lives entirely
+   in the keyframes so it self-clears without needing `animation-fill-mode`
+   — the elements carry no static outline of their own. */
+@keyframes search-found-glow {
+  0% {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    filter: drop-shadow(0 0 10px var(--accent));
+  }
+  100% {
+    outline: 2px solid transparent;
+    outline-offset: 3px;
+    filter: drop-shadow(0 0 0 transparent);
+  }
+}
+.react-flow__node.arch-node--found .arch-node,
+.react-flow__node.arch-node--found .arch-group {
+  animation: search-found-glow 2s ease-out;
+}

@@ -322,6 +322,28 @@ body {
   font-weight: 600;
 }
 
+/* MiniMap (DGC-64 / F4) — bottom-right, stacked just above the layout chip
+   (chip sits at bottom: 16px and is ~24px tall, so 48px clears it, mirroring
+   how .steps-nav clears .status-pill above). React Flow's own Panel
+   positioning (`.react-flow__panel.bottom.right`) is 3-class specificity, so
+   the override needs `!important` to win without also having to fight it on
+   specificity. Only mounted once the diagram has >8 nodes — see App.tsx. */
+.react-flow__minimap.app-minimap {
+  position: fixed !important;
+  bottom: 48px !important;
+  right: 10px !important;
+  margin: 0 !important;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  backdrop-filter: blur(6px);
+  box-shadow: var(--node-glow);
+}
+.app-minimap .react-flow__minimap-mask {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
 /* ── Architecture renderer — theme B "dark blueprint" (T12) ── */
 .arch-node {
   width: 100%;
