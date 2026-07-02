@@ -30,11 +30,8 @@ import type { WorkspaceOps } from "../workspace/watcher.js";
 import type { HistoryStore } from "../history/store.js";
 import { registerWorkspaceTools } from "./tools/workspace.js";
 import { registerDiagramTools } from "./tools/diagram.js";
-<<<<<<< HEAD
 import { registerEditDiagramTool } from "./tools/edit.js";
-=======
 import { registerDiffDiagramTool } from "./tools/diff.js";
->>>>>>> task/DGC-74-diff-diagram
 import { registerSnapshotDiagramTool } from "./tools/snapshot-steps.js";
 import { registerSnapshotTool, type SnapshotOps } from "./tools/snapshot.js";
 import { registerHistoryTools } from "./tools/history.js";
