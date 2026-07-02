@@ -316,7 +316,7 @@ body {
 }
 
 .react-flow__controls {
-  filter: invert(0.9) hue-rotate(180deg);
+  filter: var(--controls-filter);
 }
 .react-flow__edge-text {
   font-weight: 600;

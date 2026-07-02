@@ -1,8 +1,14 @@
 /**
- * Design tokens — dark blueprint theme (theme B), matching
- * spikes/reactflow-elk-layout/src/styles.css. CSS variables only; actual
- * component styles live in App.css / component-local stylesheets and
- * reference these.
+ * Design tokens — dark blueprint theme (theme B, default) and light theme
+ * (theme A, DGC-70). CSS variables only; actual component styles live in
+ * App.css / component-local stylesheets and reference these — never a raw
+ * hex/rgba — so a theme switch is a single attribute flip (see `theme.ts`).
+ *
+ * `:root` is the dark default (matches
+ * spikes/reactflow-elk-layout/src/styles.css); `[data-theme="light"]`
+ * overrides every token for the light theme. `theme.ts` toggles the
+ * `data-theme` attribute on `<html>` — no attribute (or any value other than
+ * "light") stays dark.
  */
 :root {
   /* Surfaces */
@@ -67,4 +73,76 @@
   /* Hover feedback — a brighter border than the resting `--border`. */
   --node-hover-border: #47618c;
   --group-hover-border: #47618c;
+
+  /*
+   * Misc chrome that used to be hardcoded inline in component CSS (found
+   * during the DGC-70 light-theme audit) — pulled up here so a theme switch
+   * covers them too.
+   */
+  /* Drawer/notes panel drop shadow (the side the panel slides in from
+     stays hardcoded per-component; only the color is themed). */
+  --panel-shadow-color: rgba(0, 0, 0, 0.45);
+  /* Accent-tinted background for small badges (Drawer's "remote changed"
+     pill) — derived from --accent, kept as an explicit token since CSS has
+     no `color-mix()` fallback old enough to rely on here. */
+  --accent-soft-bg: rgba(74, 163, 255, 0.14);
+  --accent-soft-bg-hover: rgba(74, 163, 255, 0.24);
+  /* React Flow's built-in <Controls> panel ships light-mode colors baked
+     into its CSS; theme B inverts them to fit the dark canvas. The light
+     theme needs no correction. */
+  --controls-filter: invert(0.9) hue-rotate(180deg);
+}
+
+[data-theme="light"] {
+  /* Surfaces */
+  --bg: #f7f8fb;
+  --panel: #ffffff;
+  --panel-translucent: rgba(255, 255, 255, 0.86);
+  --border: #d5dbea;
+
+  /* Text */
+  --text: #2b3040;
+  --text-dim: #8b93ab;
+  --text-strong: #1c2233;
+
+  /* Accent + grid — darker accent than the dark theme's so it keeps AA
+     contrast against white/near-white surfaces. */
+  --accent: #4a7dd6;
+  --grid-dot: #dfe3ec;
+
+  /* Status — same hues, retuned for contrast on a light surface. */
+  --status-connected: #1f9d46;
+  --status-connected-bg: rgba(31, 157, 70, 0.12);
+  --status-connecting: #6b7690;
+  --status-connecting-bg: rgba(107, 118, 144, 0.08);
+  --status-disconnected: #d43a3a;
+  --status-disconnected-bg: rgba(212, 58, 58, 0.12);
+
+  /* Node chrome — the dark theme's glow reads as a light bloom; on white the
+     equivalent depth cue is a soft neutral drop shadow instead. */
+  --node-glow: 0 2px 8px rgba(30, 40, 80, 0.08);
+  --node-shadow: none;
+
+  /* Icon chip — a touch softer than the dark theme's so a bright chip color
+     doesn't overpower a white node. */
+  --icon-chip-glow: 0 0 6px currentColor;
+
+  /* Group chrome — bright tint (per spec) using the light accent. */
+  --group-bg: rgba(74, 125, 214, 0.06);
+  --group-accent-bg: rgba(74, 125, 214, 0.1);
+
+  --group-depth-0-tint: transparent;
+  --group-depth-1-tint: rgba(74, 125, 214, 0.05);
+  --group-depth-2-tint: rgba(74, 125, 214, 0.09);
+  --group-depth-3-tint: rgba(74, 125, 214, 0.13);
+
+  /* Hover feedback */
+  --node-hover-border: #aab4cc;
+  --group-hover-border: #aab4cc;
+
+  /* Misc chrome (see the :root block above for what each backs). */
+  --panel-shadow-color: rgba(30, 40, 80, 0.14);
+  --accent-soft-bg: rgba(74, 125, 214, 0.12);
+  --accent-soft-bg-hover: rgba(74, 125, 214, 0.2);
+  --controls-filter: none;
 }

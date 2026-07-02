@@ -1,12 +1,18 @@
 /**
- * Floating layout toolbar (theme B: dark blueprint), top-right — mirrors the
- * translucent panel look of `.diagram-info`. Two groups:
+ * Floating layout toolbar (top-right) — mirrors the translucent panel look
+ * of `.diagram-info`. Three groups:
  *   - Spacing: compact / normal / airy, radio-style (always exactly one active).
  *   - Direction: → ↓ ← ↑ plus "auto" (clears the override, follows the
  *     document's own `direction`). Also radio-style.
+ *   - Theme: a single ☀/🌙 toggle (DGC-70) between dark (theme B) and light
+ *     (theme A).
  *
- * Pure presentational component — `onChange` is the only way state moves, so
- * `App.tsx` owns the actual prefs state + persistence (T16).
+ * Pure presentational component for spacing/direction — `onChange` is the
+ * only way that state moves, so `App.tsx` owns the actual prefs state +
+ * persistence (T16). The theme toggle is the one exception: it owns its
+ * `useTheme()` call directly (see `theme.ts`) since it's an unrelated,
+ * self-contained concern — routing it through `App.tsx`'s prefs plumbing
+ * would just add a prop only this button reads.
  */
 import type { Direction } from "@diagram-copilot/core";
 import {
@@ -15,6 +21,7 @@ import {
   type LayoutPrefs,
   type SpacingPreset,
 } from "../render/layoutOptions.js";
+import { useTheme } from "../theme.js";
 
 const SPACING_META: Record<SpacingPreset, { label: string; title: string }> = {
   compact: { label: "C", title: "Spacing: compact" },
@@ -40,6 +47,7 @@ export interface ToolbarProps {
 }
 
 export function Toolbar({ prefs, onChange, onResetLayout }: ToolbarProps) {
+  const { theme, toggleTheme } = useTheme();
   return (
     <div className="toolbar">
       <div className="toolbar-group" role="group" aria-label="Spacing">
@@ -96,6 +104,18 @@ export function Toolbar({ prefs, onChange, onResetLayout }: ToolbarProps) {
           onClick={() => onChange({ spacing: prefs.spacing })}
         >
           auto
+        </button>
+      </div>
+      <div className="toolbar-group" role="group" aria-label="Theme">
+        <button
+          type="button"
+          title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+          aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+          aria-pressed={theme === "light"}
+          className="toolbar-btn"
+          onClick={toggleTheme}
+        >
+          {theme === "dark" ? "☀" : "🌙"}
         </button>
       </div>
     </div>

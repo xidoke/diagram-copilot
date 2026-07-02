@@ -33,7 +33,7 @@
   flex-direction: column;
   background: var(--panel);
   border-right: 1px solid var(--border);
-  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.45);
+  box-shadow: 4px 0 24px var(--panel-shadow-color);
   pointer-events: auto;
 }
 
@@ -118,7 +118,7 @@
   padding: 3px 8px;
   border-radius: 999px;
   border: 1px solid var(--accent);
-  background: rgba(74, 163, 255, 0.14);
+  background: var(--accent-soft-bg);
   color: var(--accent);
   font-size: 10px;
   font-weight: 700;
@@ -128,7 +128,7 @@
   white-space: nowrap;
 }
 .drawer-badge:hover {
-  background: rgba(74, 163, 255, 0.24);
+  background: var(--accent-soft-bg-hover);
 }
 
 /* Editor fills the rest; Monaco needs a sized parent (height:100% inside). */

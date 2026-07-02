@@ -26,7 +26,13 @@ import {
   type UpdateSender,
 } from "./drawerSync.js";
 import { errorsToMarkers, MARKER_OWNER } from "./drawerMarkers.js";
-import { ARCH_DSL_LANGUAGE_ID, archDslThemeRules, registerArchDslLanguage } from "./dslLanguage.js";
+import {
+  ARCH_DSL_LANGUAGE_ID,
+  archDslThemeRules,
+  archDslThemeRulesLight,
+  registerArchDslLanguage,
+} from "./dslLanguage.js";
+import { useTheme } from "../theme.js";
 import "./drawer.css";
 
 // Deliberately no top-level `import * as monaco from "monaco-editor"` here:
@@ -77,9 +83,12 @@ async function configureSelfHostedMonaco(): Promise<void> {
   };
 }
 
-/** Registered once via `beforeMount`; keeps the editor background flush with
- *  the `--panel` surface so it reads as part of the drawer, not a widget. */
-const MONACO_THEME = "dgc-dark";
+/** Both defined unconditionally in `handleBeforeMount` — keeps the editor
+ *  background flush with the `--panel` surface so it reads as part of the
+ *  drawer, not a widget. Which one is active follows the app's `useTheme()`
+ *  (DGC-70) via the `<Editor theme={…}>` prop below, so it switches live. */
+const MONACO_THEME_DARK = "dgc-dark";
+const MONACO_THEME_LIGHT = "dgc-light";
 
 export interface DrawerProps {
   /** Whether the drawer is slid open. */
@@ -97,6 +106,10 @@ export interface DrawerProps {
 }
 
 export function Drawer({ open, onToggle, diagram, send, lastError }: DrawerProps) {
+  // DGC-70: which Monaco theme is active follows the app theme (Toolbar's
+  // ☀/🌙 toggle), kept in sync across components via `theme.ts`'s
+  // subscribe/notify — see `MONACO_THEME_DARK`/`MONACO_THEME_LIGHT` above.
+  const { theme } = useTheme();
   // Editor text lives in React state (controlled Monaco) so it survives the
   // editor being unmounted while the drawer is closed.
   const [value, setValue] = useState<string>(diagram?.dsl ?? "");
@@ -235,7 +248,7 @@ export function Drawer({ open, onToggle, diagram, send, lastError }: DrawerProps
   const handleBeforeMount = useCallback<BeforeMount>((monacoInstance) => {
     monacoRef.current = monacoInstance;
     registerArchDslLanguage(monacoInstance);
-    monacoInstance.editor.defineTheme(MONACO_THEME, {
+    monacoInstance.editor.defineTheme(MONACO_THEME_DARK, {
       base: "vs-dark",
       inherit: true,
       rules: [...archDslThemeRules],
@@ -247,6 +260,22 @@ export function Drawer({ open, onToggle, diagram, send, lastError }: DrawerProps
         "editor.lineHighlightBackground": "#1a2740", // --grid-dot
         "editorCursor.foreground": "#4aa3ff", // --accent
         "editor.selectionBackground": "#2c3f6066", // --border, translucent
+      },
+    });
+    // DGC-70 light theme (theme A) — same token roles, colors matching
+    // tokens.css's `[data-theme="light"]` block.
+    monacoInstance.editor.defineTheme(MONACO_THEME_LIGHT, {
+      base: "vs",
+      inherit: true,
+      rules: [...archDslThemeRulesLight],
+      colors: {
+        "editor.background": "#ffffff", // --panel (light)
+        "editor.foreground": "#2b3040", // --text (light)
+        "editorLineNumber.foreground": "#b7c0d9",
+        "editorLineNumber.activeForeground": "#8b93ab", // --text-dim (light)
+        "editor.lineHighlightBackground": "#f0f2f8",
+        "editorCursor.foreground": "#4a7dd6", // --accent (light)
+        "editor.selectionBackground": "#d5dbea66", // --border (light), translucent
       },
     });
   }, []);
@@ -337,7 +366,7 @@ export function Drawer({ open, onToggle, diagram, send, lastError }: DrawerProps
             <Editor
               height="100%"
               language={ARCH_DSL_LANGUAGE_ID}
-              theme={MONACO_THEME}
+              theme={theme === "light" ? MONACO_THEME_LIGHT : MONACO_THEME_DARK}
               value={value}
               onChange={handleChange}
               beforeMount={handleBeforeMount}

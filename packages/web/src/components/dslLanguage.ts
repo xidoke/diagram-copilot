@@ -146,6 +146,20 @@ export const archDslThemeRules: editor.ITokenThemeRule[] = [
 ];
 
 /**
+ * Same token set as {@link archDslThemeRules}, retuned for the `dgc-light`
+ * theme (DGC-70) — the dark set's pastel foregrounds (tuned for a near-black
+ * editor background) fall below readable contrast on white, so light gets
+ * its own deeper/more saturated hues rather than reusing the dark array.
+ */
+export const archDslThemeRulesLight: editor.ITokenThemeRule[] = [
+  { token: "comment.arch-dsl", foreground: "6b7690" }, // --text-dim (light)
+  { token: "keyword.arch-dsl", foreground: "7c4dc4" }, // deep purple
+  { token: "attr-key.arch-dsl", foreground: "c96a1f" }, // deep orange
+  { token: "label.arch-dsl", foreground: "9a7a15" }, // deep gold
+  { token: "operator.arch-dsl", foreground: "4a7dd6" }, // --accent (light)
+];
+
+/**
  * Registers `arch-dsl` with a Monaco instance: the language id, its
  * tokenizer, and its language configuration. Idempotent — safe to call from
  * `beforeMount` on every editor mount (registering twice is a Monaco no-op
