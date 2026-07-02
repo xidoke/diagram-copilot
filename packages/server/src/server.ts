@@ -99,6 +99,12 @@ export interface CreateServerOptions {
    */
   openHandler?: OpenRequestHandler;
   /**
+   * Handler for the diagram-lifecycle routes (`POST /api/rename`, `POST
+   * /api/trash`, DGC-65) — built with `createLifecycleHttpHandler` from
+   * `http.js`. Omitted → routes inert, same opt-in pattern as `openHandler`.
+   */
+  lifecycleHandler?: OpenRequestHandler;
+  /**
    * Handler for a schema-valid `snapshot-response` frame from a connected
    * client (T24) — typically the snapshot broker's `resolve`, wired by the
    * CLI entry. Omitted → snapshot responses are logged and dropped.
@@ -149,6 +155,7 @@ export function createServer(options: CreateServerOptions): ServerHandle {
       options.apiHandler,
       options.undoHandler,
       options.notesHandler,
+      options.lifecycleHandler,
     ),
   );
   const clients = new Set<WebSocket>();

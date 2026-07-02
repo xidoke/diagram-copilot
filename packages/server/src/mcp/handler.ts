@@ -37,6 +37,8 @@ import { registerNotesTools } from "./tools/notes.js";
 import type { NotesStore } from "../notes.js";
 import { registerValidateDslTool } from "./tools/validate.js";
 import { registerExportDiagramTool } from "./tools/export-file.js";
+import { registerLifecycleTools } from "./tools/lifecycle.js";
+import type { LifecycleOps } from "../workspace/lifecycle.js";
 
 /** MCP server identity advertised in the `initialize` result. */
 export const MCP_SERVER_NAME = "diagram-copilot";
@@ -85,6 +87,13 @@ export interface McpHandlerOptions {
    * tools out entirely.
    */
   notes?: NotesStore;
+  /**
+   * Live lifecycle ops for `rename_diagram` / `delete_diagram` / `list_trash` /
+   * `restore_diagram` (DGC-65). Wire to the shared {@link createLifecycleOps}
+   * instance, returning `null` before the watcher is ready. Registered only
+   * alongside a workspace; omit to leave the lifecycle tools out entirely.
+   */
+  getLifecycle?: () => LifecycleOps | null;
   /**
    * On-disk destination config for `export_diagram` (F2): the default
    * `--export-dir` plus the whitelisted `--export-root` directories a caller
@@ -142,6 +151,11 @@ function registerTools(server: McpServer, options: McpHandlerOptions): void {
     // Notes (get_notes/set_notes, DGC-63) plug in only when a notes store is wired.
     if (options.notes !== undefined) {
       registerNotesTools(server, options.getWorkspace, options.notes);
+    }
+    // Lifecycle (rename/delete/list_trash/restore, DGC-65) plug in only when
+    // lifecycle ops are wired.
+    if (options.getLifecycle !== undefined) {
+      registerLifecycleTools(server, options.getLifecycle);
     }
   }
 

@@ -101,6 +101,103 @@
   font-weight: 500;
 }
 
+/* One diagram row: the open button fills the row, the ⋯ actions button rides
+ * on the right, and the actions/confirm strip drops in underneath (DGC-65). */
+.picker__row {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.picker__row .picker__item {
+  flex: 1;
+  min-width: 0;
+}
+
+.picker__more {
+  flex: none;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 4px 6px;
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  /* Hidden until the row is hovered/focused so the list stays quiet. */
+  opacity: 0;
+}
+.picker__row:hover .picker__more,
+.picker__more:focus-visible,
+.picker__more[aria-expanded="true"] {
+  opacity: 1;
+}
+.picker__more:hover {
+  border-color: var(--border);
+  color: var(--text);
+}
+.picker__more:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+/* Small action strip (Rename / Delete, or the delete confirm) under a row. */
+.picker__actions {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px 4px 22px;
+}
+
+.picker__action {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 3px 8px;
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+}
+.picker__action:hover {
+  color: var(--text);
+  background: var(--group-accent-bg);
+}
+.picker__action:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.picker__action--danger {
+  color: var(--status-disconnected);
+  border-color: var(--status-disconnected);
+}
+
+.picker__confirm-text {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+/* Inline rename input — swapped in for the row while renaming (DGC-65). */
+.picker__rename {
+  padding: 2px 8px 2px 22px;
+}
+.picker__rename--step {
+  padding-left: 36px;
+}
+.picker__rename-input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  padding: 4px 6px;
+  color: var(--text-strong);
+  font-size: 12px;
+  font-family: inherit;
+}
+.picker__rename-input:focus {
+  outline: none;
+}
+
 .picker__check {
   flex: none;
   width: 12px;

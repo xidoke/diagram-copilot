@@ -212,6 +212,19 @@ export interface WorkspaceWatcher extends WorkspaceOps {
    * an existing file and rejects path-traversal names.
    */
   createDiagram(name: string, dsl?: string): CreateDiagramResult;
+  /**
+   * Re-scan the workspace directory and reconcile the in-memory view NOW,
+   * rather than waiting for the debounced fs watcher, then broadcast the
+   * resulting workspace (+ active diagram) frames. Lifecycle ops (rename/trash/
+   * restore, DGC-65) mutate `.arch` files and their sidecars on disk directly,
+   * then call this for an immediate, consistent broadcast — the later chokidar
+   * add/unlink events for the same moves settle onto identical state and become
+   * no-ops. `preferActive`, when it names a diagram that now exists, is made the
+   * sticky-active pick (so a rename's active follows to the new name); omit it to
+   * simply re-resolve active from disk (so trashing the active diagram falls back
+   * cleanly to the automatic pick).
+   */
+  resync(preferActive?: string): void;
 }
 
 type FileEventKind = "add" | "change" | "unlink";
@@ -444,6 +457,46 @@ export function createWorkspaceWatcher(options: WorkspaceWatcherOptions): Worksp
     if (active !== null) parseAndBroadcastActive(active);
   }
 
+  /**
+   * Reconcile the in-memory view with a fresh directory scan and broadcast the
+   * diff. See {@link WorkspaceWatcher.resync} for the contract. Idempotent: the
+   * debounced chokidar events for the same on-disk moves land on state this
+   * already reflects and broadcast nothing further.
+   */
+  function resync(preferActive?: string): void {
+    const scanned = new Set(scanArchFileNames(root));
+    const prevDiagrams = new Set(diagrams);
+    const prevActive = active;
+
+    diagrams.clear();
+    for (const name of scanned) diagrams.add(name);
+    // Forget bookkeeping for names that vanished, so a later recreation with
+    // identical bytes is not mistaken for our own echo, and stale versions do
+    // not resurrect.
+    for (const name of [...versions.keys()]) if (!diagrams.has(name)) versions.delete(name);
+    for (const name of [...lastBroadcastContent.keys()]) {
+      if (!diagrams.has(name)) lastBroadcastContent.delete(name);
+    }
+
+    // A rename's active-follow: make the requested name sticky when it now
+    // exists. Otherwise leave the sticky/auto pick to resolveActive, which also
+    // clears a sticky choice whose file just disappeared (trash fallback).
+    if (preferActive !== undefined && diagrams.has(preferActive)) {
+      stickyActive = preferActive;
+    }
+    active = resolveActive();
+
+    const diagramsChanged = !setsEqual(prevDiagrams, diagrams);
+    const activeChanged = active !== prevActive;
+    if (diagramsChanged || activeChanged) broadcastWorkspace();
+    // Push fresh content when active just changed (a new diagram to render) or
+    // when the caller explicitly steered active to a name (rename → new name).
+    const steered = preferActive !== undefined && active === preferActive;
+    if (active !== null && (activeChanged || steered)) {
+      parseAndBroadcastActive(active);
+    }
+  }
+
   function createDiagram(name: string, dsl?: string): CreateDiagramResult {
     const validated = validateDiagramName(name);
     if (!validated.ok) return { ok: false, name, error: validated.error };
@@ -627,6 +680,7 @@ export function createWorkspaceWatcher(options: WorkspaceWatcherOptions): Worksp
 
     setActive,
     createDiagram,
+    resync,
     list,
     open,
     read,
