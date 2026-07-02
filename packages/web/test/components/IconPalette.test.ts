@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { buildIconEntries, filterIcons, type IconEntry } from "../../src/components/IconPalette";
+import { describe, expect, it, vi } from "vitest";
+import { buildIconEntries, filterIcons, handleIconClick, type IconEntry } from "../../src/components/IconPalette";
 
 /** A tiny hand-built set so the matching semantics are asserted in isolation
  *  (independent of the live registry's exact contents). */
@@ -64,5 +64,58 @@ describe("buildIconEntries", () => {
     for (const entry of buildIconEntries()) {
       expect(entry.svg).toMatch(/<svg/);
     }
+  });
+});
+
+/** Reused across the handleIconClick cases below. */
+const SERVER: IconEntry = {
+  id: "server",
+  title: "Server",
+  svg: "<svg/>",
+  source: "lucide",
+  aliases: [],
+};
+
+describe("handleIconClick", () => {
+  it("inserts into the drawer and skips the clipboard when insert succeeds", async () => {
+    const insert = vi.fn().mockReturnValue(true);
+    const copy = vi.fn().mockResolvedValue(undefined);
+
+    const toast = await handleIconClick(SERVER, { insert, copy });
+
+    expect(toast).toBe("inserted [icon: server]");
+    expect(insert).toHaveBeenCalledWith("[icon: server]");
+    expect(copy).not.toHaveBeenCalled();
+  });
+
+  it("falls back to copy when insert reports failure (drawer closed)", async () => {
+    const insert = vi.fn().mockReturnValue(false);
+    const copy = vi.fn().mockResolvedValue(undefined);
+
+    const toast = await handleIconClick(SERVER, { insert, copy });
+
+    expect(toast).toBe("copied [icon: server]");
+    expect(copy).toHaveBeenCalledWith("[icon: server]");
+  });
+
+  it("reports a copy failure when both insert and clipboard fail", async () => {
+    const insert = vi.fn().mockReturnValue(false);
+    const copy = vi.fn().mockRejectedValue(new Error("denied"));
+
+    const toast = await handleIconClick(SERVER, { insert, copy });
+
+    expect(toast).toBe("copy failed — [icon: server]");
+  });
+
+  it("defaults to the real drawer registry when insert is not injected", async () => {
+    // No `insert` override: falls through to the module's `insertIntoDrawer`,
+    // which reports false with nothing registered in this test's module
+    // state — exercising the default-params branch, not just the fakes.
+    const copy = vi.fn().mockResolvedValue(undefined);
+
+    const toast = await handleIconClick(SERVER, { copy });
+
+    expect(toast).toBe("copied [icon: server]");
+    expect(copy).toHaveBeenCalledWith("[icon: server]");
   });
 });
