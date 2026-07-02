@@ -22,6 +22,7 @@ import {
   type SpacingPreset,
 } from "../render/layoutOptions.js";
 import { useTheme } from "../theme.js";
+import { IconPalette } from "./IconPalette.js";
 
 const SPACING_META: Record<SpacingPreset, { label: string; title: string }> = {
   compact: { label: "C", title: "Spacing: compact" },
@@ -130,6 +131,9 @@ export function Toolbar({ prefs, onChange, onResetLayout, onPresent }: ToolbarPr
             ▶
           </button>
         )}
+        {/* Icon palette (DGC-77) — self-contained: owns its own popover + copy
+            state, so App.tsx doesn't need to plumb anything through here. */}
+        <IconPalette />
       </div>
     </div>
   );
