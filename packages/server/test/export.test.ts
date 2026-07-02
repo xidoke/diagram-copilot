@@ -4,7 +4,7 @@
  * `createServer({ port: 0 })` + `fetch` pattern as mcp.test.ts/server.test.ts)
  * to prove the http.ts route branch + body-reading wiring actually works.
  */
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -119,8 +119,12 @@ describe("saveExport", () => {
     const result = saveExport(dir, body({ name: "../../etc/passwd" }));
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/path separators|\.\./);
-    // Nothing was written outside (or inside) exportDir.
-    expect(existsSync(path.join(dir, "..", "..", "etc", "passwd"))).toBe(false);
+    // Nothing was written at all: no result path, and exportDir stayed empty.
+    // (Do NOT probe the escaped absolute path — on Linux CI the tmpdir is
+    // /tmp/xxx, so two levels up IS `/` and `/etc/passwd` genuinely exists;
+    // that assertion was environment-dependent, found by the first CI run.)
+    expect(result.path).toBeUndefined();
+    expect(readdirSync(dir)).toEqual([]);
   });
 
   it("blocks a name containing a raw path separator", () => {
@@ -191,7 +195,9 @@ describe("POST /export — end to end over HTTP", () => {
     expect(response.status).toBe(400);
     const json = (await response.json()) as { ok: boolean; error: string };
     expect(json.ok).toBe(false);
-    expect(existsSync(path.join(dir, "..", "..", "etc", "passwd"))).toBe(false);
+    // Same environment-independent invariant as the unit test above: the
+    // export dir stayed empty (probing the escaped path is wrong on Linux).
+    expect(readdirSync(dir)).toEqual([]);
   });
 
   it("appends -2 on a duplicate name+version+format instead of overwriting", async () => {
