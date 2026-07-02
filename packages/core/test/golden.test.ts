@@ -132,6 +132,65 @@ describe("golden fixtures — snapshot + structural assertions", () => {
       "Rate Limiter>API Backend",
     ]);
   });
+
+  it("microservices.arch: ~60-node stress fixture, 12 nested groups, e-commerce domains (T-PERF/DGC-76)", () => {
+    const doc = parseFixture("microservices.arch");
+    expect(doc).toMatchSnapshot();
+
+    expect(doc.nodes).toHaveLength(60);
+    expect(doc.groups).toHaveLength(12);
+    expect(doc.edges).toHaveLength(92);
+    // Every edge carries a label — used by the layout perf test to exercise
+    // ELK's edge-label reservation on a realistic, fully-labeled graph.
+    expect(doc.edges.every((e) => e.label !== undefined)).toBe(true);
+
+    // Platform wraps 9 direct child groups; two domains (Users, Orders) each
+    // nest a third-level "…Data" group — the 12 total (3-level-deep) groups.
+    expect(doc.groups.map((g) => g.id)).toEqual([
+      "Platform",
+      "Edge",
+      "API Tier",
+      "Users Domain",
+      "Users Data",
+      "Orders Domain",
+      "Orders Data",
+      "Payments Domain",
+      "Inventory Domain",
+      "Data Tier",
+      "Messaging",
+      "Observability",
+    ]);
+    const groupsById = Object.fromEntries(doc.groups.map((g) => [g.id, g]));
+    expect(groupsById["Platform"]?.parentId).toBeUndefined();
+    expect(groupsById["Users Data"]?.parentId).toBe("Users Domain");
+    expect(groupsById["Orders Data"]?.parentId).toBe("Orders Domain");
+    for (const id of ["Edge", "API Tier", "Users Domain", "Orders Domain", "Payments Domain", "Inventory Domain", "Data Tier", "Messaging", "Observability"]) {
+      expect(groupsById[id]?.parentId).toBe("Platform");
+    }
+
+    // Clients sit outside Platform (the public edge), same pattern as
+    // news-feed.arch's Client/CDN split.
+    expect(doc.nodes.filter((n) => n.groupId === undefined).map((n) => n.id)).toEqual([
+      "Web Client",
+      "Mobile Client",
+      "Partner Client",
+    ]);
+
+    // A one-to-many fan-out (API Gateway routes to both API flavors) and a
+    // 4-way fan-in (Prometheus scraping every domain service) both parse to
+    // one edge per target, sharing the statement's single label.
+    const withoutId = (edges: typeof doc.edges) => edges.map(({ from, to, label }) => ({ from, to, label }));
+    expect(withoutId(doc.edges.filter((e) => e.from === "API Gateway" && e.label === "route request"))).toEqual([
+      { from: "API Gateway", to: "Public API", label: "route request" },
+      { from: "API Gateway", to: "Internal API", label: "route request" },
+    ]);
+    expect(withoutId(doc.edges.filter((e) => e.from === "Prometheus"))).toEqual([
+      { from: "Prometheus", to: "Users Service", label: "scrape metrics" },
+      { from: "Prometheus", to: "Orders Service", label: "scrape metrics" },
+      { from: "Prometheus", to: "Payments Service", label: "scrape metrics" },
+      { from: "Prometheus", to: "Inventory Service", label: "scrape metrics" },
+    ]);
+  });
 });
 
 // ---------------------------------------------------------------------------

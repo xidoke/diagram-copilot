@@ -1,9 +1,10 @@
 /**
  * Template gallery (DGC-66 / F6) — "New from template ▸" in the diagram
  * picker. Templates are exactly the golden fixtures already shipped inside
- * `@diagram-copilot/core` (`packages/core/fixtures/*.arch` — the same three
- * system-design sketches `golden.test.ts` exercises for T11/DGC-31), read
- * straight off disk rather than duplicated into the server package.
+ * `@diagram-copilot/core` (`packages/core/fixtures/*.arch` — the same
+ * system-design sketches `golden.test.ts` exercises for T11/DGC-31 plus the
+ * ~60-node stress fixture from T-PERF/DGC-76), read straight off disk rather
+ * than duplicated into the server package.
  *
  *   - `GET`  `/api/templates`      → `{ templates: TemplateSummary[] }`
  *   - `POST` `/api/templates/use` `{ id, name }` → creates `name` seeded with

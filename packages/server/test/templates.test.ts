@@ -68,9 +68,10 @@ describe("resolveFixturesDir", () => {
 });
 
 describe("listTemplates", () => {
-  it("lists exactly the 3 shipped fixtures with correct ids, titles, and node counts", () => {
+  it("lists exactly the 4 shipped fixtures with correct ids, titles, and node counts", () => {
     const templates = listTemplates();
     expect(templates).toEqual([
+      { id: "microservices", title: "Microservices", nodeCount: 60 },
       { id: "news-feed", title: "News Feed", nodeCount: 12 },
       { id: "rate-limiter", title: "Rate Limiter", nodeCount: 5 },
       { id: "url-shortener", title: "URL Shortener", nodeCount: 7 },
@@ -126,7 +127,7 @@ describe("readTemplateDsl", () => {
 // --- GET /api/templates ------------------------------------------------------
 
 describe("GET /api/templates", () => {
-  it("returns the 3 fixtures over real HTTP, workspace not required", async () => {
+  it("returns the 4 fixtures over real HTTP, workspace not required", async () => {
     const server = createServer({ port: 0, templatesHandler: createTemplatesApiHandler(() => null) });
     openServers.add(server);
     const { url } = await server.start();
