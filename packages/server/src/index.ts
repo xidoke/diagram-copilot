@@ -16,7 +16,8 @@ import { fileURLToPath } from "node:url";
 import type { ServerMessage } from "@diagram-copilot/core";
 import { createServer, WELCOME_WORKSPACE, WS_PATH } from "./server.js";
 import { createClientUpdateHandler } from "./client-updates.js";
-import { MCP_PATH, createOpenHandler } from "./http.js";
+import { MCP_PATH, createOpenHandler, createLifecycleHttpHandler } from "./http.js";
+import { createLifecycleOps } from "./workspace/lifecycle.js";
 import { createLayoutApiHandler } from "./layout-overrides.js";
 import { createNotesApiHandler, createNotesStore } from "./notes.js";
 import { createTemplatesApiHandler } from "./templates.js";
@@ -166,6 +167,12 @@ async function main(): Promise<void> {
   // HTTP handler below so both go through the same sanitize + 1 MB cap.
   const notesStore = createNotesStore(options.workspace);
 
+  // Rename + trash/restore (DGC-65). Bound to the workspace dir, driving the
+  // watcher through the same mutable-ref so its ops move `.arch` + sidecars and
+  // immediately reconcile/broadcast. Shared by the MCP tools and the
+  // `/api/rename` + `/api/trash` HTTP routes below.
+  const lifecycle = createLifecycleOps(options.workspace, () => watcher ?? null);
+
   const server = createServer({
     port: options.port,
     staticDir: resolveStaticDir(),
@@ -190,12 +197,16 @@ async function main(): Promise<void> {
       getHistory: () => history,
       // Notes read/write store for get_notes/set_notes (DGC-63).
       notes: notesStore,
+      // Rename/delete/list_trash/restore tools (DGC-65).
+      getLifecycle: () => lifecycle,
       // `export_diagram` (F2) — render-to-file destinations: default dir plus
       // the whitelist a caller `path` may write into.
       exportPaths: { dir: options.exportDir, roots: options.exportRoots },
     }),
     // `POST /api/open` (T36 / DGC-57) — diagram picker's open/create action.
     openHandler: createOpenHandler(() => watcher ?? null),
+    // `POST /api/rename` + `/api/trash` (DGC-65) — picker's rename/delete actions.
+    lifecycleHandler: createLifecycleHttpHandler(() => lifecycle),
     // Layout-override sidecar API — reads/writes `<name>.layout.json` next to
     // each diagram in the workspace the CLI just resolved.
     apiHandler: createLayoutApiHandler(options.workspace),

@@ -10,6 +10,12 @@
  * itself updates via the existing WS `workspace`/`diagram` broadcast once the
  * server activates it, so this component owns no diagram-rendering state.
  *
+ * Each row also carries a small context menu (the ⋯ button, or right-click)
+ * with Rename (inline input, DGC-65 `/api/rename` — the server moves the
+ * layout/notes/history sidecars along) and Delete (small confirm, `/api/trash`
+ * — recoverable server-side trash, never a hard delete). The dropdown stays
+ * open after either action so the updated list is immediately visible.
+ *
  * `groupDiagrams` is the pure half — kept separate from JSX so it's testable
  * without rendering (no DOM needed, matches the project's node-only vitest
  * setup; see StatusPill.tsx/EmptyState.tsx).
@@ -64,12 +70,23 @@ export function groupDiagrams(names: string[]): DiagramGroup[] {
  *  cross-origin URL gets CORS-blocked — found in T25 e2e). */
 const API_OPEN_URL = "/api/open";
 
+/** REST endpoints for the row context-menu's lifecycle actions (DGC-65).
+ *  Relative for the same reason as {@link API_OPEN_URL}. */
+const API_RENAME_URL = "/api/rename";
+const API_TRASH_URL = "/api/trash";
+
 /** Shape returned by `POST /api/open` — structurally mirrors the server's `OpenResult`. */
 interface OpenApiResult {
   ok: boolean;
   created: boolean;
   name: string;
   version: number;
+  error?: string;
+}
+
+/** Minimal result shape shared by the lifecycle routes (`/api/rename`, `/api/trash`). */
+export interface LifecycleApiResult {
+  ok: boolean;
   error?: string;
 }
 
@@ -148,6 +165,28 @@ async function requestUseTemplate(id: string, name: string): Promise<UseTemplate
   return parsed;
 }
 
+/** POST a JSON body to a lifecycle route and normalize the reply (never throws on a non-JSON body). */
+async function postLifecycle(url: string, body: Record<string, string>): Promise<LifecycleApiResult> {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const parsed = (await res.json().catch(() => null)) as LifecycleApiResult | null;
+  if (!parsed) return { ok: false, error: `Unexpected response (HTTP ${res.status}).` };
+  return parsed;
+}
+
+/** `POST /api/rename` — rename a diagram; the server moves its sidecars too. Exported for tests. */
+export function requestRename(name: string, newName: string): Promise<LifecycleApiResult> {
+  return postLifecycle(API_RENAME_URL, { name, newName });
+}
+
+/** `POST /api/trash` — move a diagram to the recoverable workspace trash. Exported for tests. */
+export function requestTrash(name: string): Promise<LifecycleApiResult> {
+  return postLifecycle(API_TRASH_URL, { name });
+}
+
 /** How long an error toast stays visible before auto-clearing (matches ExportMenu's STATUS_TIMEOUT_MS). */
 const ERROR_TIMEOUT_MS = 2500;
 
@@ -172,6 +211,13 @@ export function Picker({ workspace, name, version }: PickerProps) {
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [templates, setTemplates] = useState<TemplateSummary[] | null>(null);
   const [templatesLoading, setTemplatesLoading] = useState(false);
+  // Row context-menu state (DGC-65): which diagram's ⋯ menu is open, which is
+  // being renamed inline (plus the draft name), and which shows the delete
+  // confirm. At most one of the three flows is active at a time.
+  const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Close on outside click / Escape — same behavior as ExportMenu's dropdown.
@@ -194,13 +240,16 @@ export function Picker({ workspace, name, version }: PickerProps) {
   }, [open]);
 
   // Reset transient state whenever the dropdown closes, so a stale error/typed
-  // name doesn't linger the next time it's reopened.
+  // name/half-finished rename doesn't linger the next time it's reopened.
   useEffect(() => {
     if (!open) {
       setNewName("");
       setError(null);
       setTemplatesOpen(false);
       setTemplates(null);
+      setMenuFor(null);
+      setRenaming(null);
+      setConfirmDelete(null);
     }
   }, [open]);
 
@@ -281,8 +330,178 @@ export function Picker({ workspace, name, version }: PickerProps) {
     [busy],
   );
 
+  /** Begin an inline rename for `target`: swap its row for a pre-filled input. */
+  const startRename = useCallback((target: string) => {
+    setMenuFor(null);
+    setConfirmDelete(null);
+    setRenaming(target);
+    setRenameValue(target);
+  }, []);
+
+  /** Submit the inline rename. The list itself updates via the WS broadcast. */
+  const handleRename = useCallback(async () => {
+    const from = renaming;
+    const to = renameValue.trim();
+    if (!from || busy) return;
+    if (!to || to === from) {
+      setRenaming(null);
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await requestRename(from, to);
+      if (!result.ok) {
+        setError(result.error ?? `Could not rename "${from}".`);
+        return;
+      }
+      setRenaming(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }, [busy, renaming, renameValue]);
+
+  /** Confirmed delete: move `target` to the server-side trash (recoverable). */
+  const handleDelete = useCallback(
+    async (target: string) => {
+      if (busy) return;
+      setBusy(true);
+      setError(null);
+      try {
+        const result = await requestTrash(target);
+        if (!result.ok) {
+          setError(result.error ?? `Could not delete "${target}".`);
+          return;
+        }
+        setConfirmDelete(null);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy],
+  );
+
   const groups = groupDiagrams(workspace?.diagrams ?? []);
   const active = workspace?.active;
+  const existing = new Set(workspace?.diagrams ?? []);
+
+  /**
+   * One diagram row: open button + ⋯ actions button, with the inline rename
+   * input, the small action menu, or the delete confirm swapped in when that
+   * flow is active for this name. Lifecycle actions only make sense for
+   * diagrams that actually exist (a step-group root may not).
+   */
+  const renderRow = (target: string, isStep: boolean) => {
+    const stepClass = isStep ? " picker__item--step" : "";
+
+    if (renaming === target) {
+      return (
+        <form
+          key={target}
+          className={`picker__rename${isStep ? " picker__rename--step" : ""}`}
+          onSubmit={(event) => {
+            event.preventDefault();
+            void handleRename();
+          }}
+        >
+          <input
+            type="text"
+            className="picker__rename-input"
+            aria-label={`Rename ${target}`}
+            value={renameValue}
+            autoFocus
+            disabled={busy}
+            onChange={(event) => setRenameValue(event.target.value)}
+            onKeyDown={(event) => {
+              // Cancel the rename only; Escape must not also close the dropdown.
+              if (event.key === "Escape") {
+                event.stopPropagation();
+                setRenaming(null);
+              }
+            }}
+            onBlur={() => setRenaming(null)}
+          />
+        </form>
+      );
+    }
+
+    return (
+      <div key={target} className="picker__row" onContextMenu={(event) => {
+        if (!existing.has(target)) return;
+        event.preventDefault();
+        setConfirmDelete(null);
+        setRenaming(null);
+        setMenuFor((current) => (current === target ? null : target));
+      }}>
+        <button
+          type="button"
+          role="menuitem"
+          className={`picker__item${stepClass}`}
+          disabled={busy}
+          onClick={() => void handleOpen(target)}
+        >
+          <span className="picker__check">{target === active ? "✓" : ""}</span>
+          <span className="picker__name">{target}</span>
+        </button>
+        {existing.has(target) && (
+          <button
+            type="button"
+            className="picker__more"
+            aria-label={`Actions for ${target}`}
+            aria-haspopup="menu"
+            aria-expanded={menuFor === target}
+            disabled={busy}
+            onClick={() => {
+              setConfirmDelete(null);
+              setRenaming(null);
+              setMenuFor((current) => (current === target ? null : target));
+            }}
+          >
+            ⋯
+          </button>
+        )}
+        {menuFor === target && (
+          <div className="picker__actions" role="menu">
+            <button type="button" role="menuitem" className="picker__action" disabled={busy} onClick={() => startRename(target)}>
+              Rename
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="picker__action picker__action--danger"
+              disabled={busy}
+              onClick={() => {
+                setMenuFor(null);
+                setConfirmDelete(target);
+              }}
+            >
+              Delete
+            </button>
+          </div>
+        )}
+        {confirmDelete === target && (
+          <div className="picker__actions picker__actions--confirm" role="alertdialog" aria-label={`Delete ${target}?`}>
+            <span className="picker__confirm-text">Delete?</span>
+            <button
+              type="button"
+              className="picker__action picker__action--danger"
+              disabled={busy}
+              onClick={() => void handleDelete(target)}
+            >
+              Yes
+            </button>
+            <button type="button" className="picker__action" disabled={busy} onClick={() => setConfirmDelete(null)}>
+              No
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="picker" ref={containerRef}>
@@ -303,29 +522,8 @@ export function Picker({ workspace, name, version }: PickerProps) {
             <div className="picker__list">
               {groups.map((group) => (
                 <div key={group.root} className="picker__group">
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="picker__item"
-                    disabled={busy}
-                    onClick={() => void handleOpen(group.root)}
-                  >
-                    <span className="picker__check">{group.root === active ? "✓" : ""}</span>
-                    <span className="picker__name">{group.root}</span>
-                  </button>
-                  {group.steps.map((step) => (
-                    <button
-                      key={step}
-                      type="button"
-                      role="menuitem"
-                      className="picker__item picker__item--step"
-                      disabled={busy}
-                      onClick={() => void handleOpen(step)}
-                    >
-                      <span className="picker__check">{step === active ? "✓" : ""}</span>
-                      <span className="picker__name">{step}</span>
-                    </button>
-                  ))}
+                  {renderRow(group.root, false)}
+                  {group.steps.map((step) => renderRow(step, true))}
                 </div>
               ))}
             </div>

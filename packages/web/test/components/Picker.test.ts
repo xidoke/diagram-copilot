@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { formatTemplateLabel, groupDiagrams } from "../../src/components/Picker";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { formatTemplateLabel, groupDiagrams, requestRename, requestTrash } from "../../src/components/Picker";
 
 describe("groupDiagrams", () => {
   it("returns an empty list for an empty workspace", () => {
@@ -60,5 +60,68 @@ describe("formatTemplateLabel (DGC-66 / F6 — 'New from template ▸')", () => 
 
   it("uses the plural 'nodes' for a count of 0", () => {
     expect(formatTemplateLabel({ id: "empty", title: "Empty", nodeCount: 0 })).toBe("Empty · 0 nodes");
+  });
+});
+
+/**
+ * The lifecycle request helpers (DGC-65) — exercised against a stubbed global
+ * fetch (this suite runs in vitest's node environment, no DOM), verifying the
+ * exact route/body they POST and how non-OK / non-JSON replies are normalized.
+ */
+describe("requestRename / requestTrash", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function stubFetch(status: number, body: unknown | null) {
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    vi.stubGlobal("fetch", (url: string, init: RequestInit) => {
+      calls.push({ url, init });
+      return Promise.resolve({
+        status,
+        json: () => (body === null ? Promise.reject(new Error("not json")) : Promise.resolve(body)),
+      });
+    });
+    return calls;
+  }
+
+  it("requestRename POSTs { name, newName } to /api/rename and returns the parsed result", async () => {
+    const calls = stubFetch(200, { ok: true, oldName: "demo", newName: "renamed" });
+
+    const result = await requestRename("demo", "renamed");
+
+    expect(result.ok).toBe(true);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe("/api/rename");
+    expect(calls[0].init.method).toBe("POST");
+    expect(JSON.parse(calls[0].init.body as string)).toEqual({ name: "demo", newName: "renamed" });
+  });
+
+  it("requestRename surfaces the server's error on a refused rename", async () => {
+    stubFetch(400, { ok: false, error: 'A diagram named "taken" already exists.' });
+
+    const result = await requestRename("demo", "taken");
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("already exists");
+  });
+
+  it("requestTrash POSTs { name } to /api/trash and returns the parsed result", async () => {
+    const calls = stubFetch(200, { ok: true, name: "demo", id: "2026-07-02T00-00-00.000Z-demo" });
+
+    const result = await requestTrash("demo");
+
+    expect(result.ok).toBe(true);
+    expect(calls[0].url).toBe("/api/trash");
+    expect(JSON.parse(calls[0].init.body as string)).toEqual({ name: "demo" });
+  });
+
+  it("normalizes a non-JSON reply into an ok:false result with the HTTP status", async () => {
+    stubFetch(500, null);
+
+    const result = await requestTrash("demo");
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("500");
   });
 });

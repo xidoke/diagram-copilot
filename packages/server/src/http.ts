@@ -11,6 +11,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import { EXPORT_PATH, handleExportRequest } from "./export/save.js";
 import type { WorkspaceOps } from "./workspace/watcher.js";
+import type { LifecycleOps } from "./workspace/lifecycle.js";
 import { LAYOUT_API_PREFIX, type LayoutApiHandler } from "./layout-overrides.js";
 import { NOTES_API_PREFIX, type NotesApiHandler } from "./notes.js";
 import { TEMPLATES_API_PREFIX, type TemplatesApiHandler } from "./templates.js";
@@ -30,6 +31,16 @@ export const MCP_PATH = "/mcp";
  * than in its own module — see {@link createOpenHandler}.
  */
 export const API_OPEN_PATH = "/api/open";
+
+/**
+ * Routes for the picker's diagram-lifecycle actions (DGC-65): `POST /api/rename`
+ * `{ name, newName }` renames a diagram + its sidecars, and `POST /api/trash`
+ * `{ name }` moves one into the (recoverable) trash. Both are handled by
+ * {@link createLifecycleHttpHandler}, which owns its own method policy and
+ * dispatches on pathname.
+ */
+export const API_RENAME_PATH = "/api/rename";
+export const API_TRASH_PATH = "/api/trash";
 
 /** Shown when `packages/web/dist` is missing (web app not built yet). */
 export const FALLBACK_HTML = `<!doctype html>
@@ -197,6 +208,82 @@ export function createOpenHandler(getWorkspace: () => WorkspaceOps | null): Open
   };
 }
 
+/** Serialize an arbitrary JSON body with the right headers (lifecycle routes). */
+function sendJsonBody(res: ServerResponse, status: number, body: unknown): void {
+  const payload = JSON.stringify(body);
+  res.writeHead(status, {
+    "content-type": "application/json; charset=utf-8",
+    "content-length": Buffer.byteLength(payload),
+  });
+  res.end(payload);
+}
+
+/** Pull a string field from a parsed JSON body, or `undefined` when absent/non-string. */
+function stringField(body: unknown, key: string): string | undefined {
+  if (body !== null && typeof body === "object" && key in body) {
+    const value = (body as Record<string, unknown>)[key];
+    if (typeof value === "string") return value;
+  }
+  return undefined;
+}
+
+/**
+ * Build the `/api/rename` + `/api/trash` route handler (DGC-65 diagram picker):
+ * `POST` only, dispatched on pathname. `rename` reads `{ name, newName }`,
+ * `trash` reads `{ name }`; both act through the shared {@link LifecycleOps}
+ * and echo the result as JSON. `getLifecycle` follows the same
+ * mutable-watcher-ref pattern as {@link createOpenHandler} — `null` before the
+ * watcher has started yields a 503.
+ */
+export function createLifecycleHttpHandler(
+  getLifecycle: () => LifecycleOps | null,
+): OpenRequestHandler {
+  return async (req, res) => {
+    if (req.method !== "POST") {
+      res.writeHead(405, { allow: "POST", "content-type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ ok: false, error: "Method Not Allowed" }));
+      return;
+    }
+
+    let body: unknown;
+    try {
+      body = await readJsonBody(req);
+    } catch {
+      sendJsonBody(res, 400, { ok: false, error: "Invalid JSON body." });
+      return;
+    }
+
+    const lifecycle = getLifecycle();
+    if (!lifecycle) {
+      sendJsonBody(res, 503, { ok: false, error: "Workspace is not ready yet — try again in a moment." });
+      return;
+    }
+
+    const url = new URL(req.url ?? "/", "http://localhost");
+
+    if (url.pathname === API_RENAME_PATH) {
+      const name = stringField(body, "name");
+      const newName = stringField(body, "newName");
+      if (name === undefined || newName === undefined) {
+        sendJsonBody(res, 400, { ok: false, error: '"name" and "newName" must be strings.' });
+        return;
+      }
+      const result = lifecycle.rename(name, newName);
+      sendJsonBody(res, result.ok ? 200 : 400, result);
+      return;
+    }
+
+    // API_TRASH_PATH
+    const name = stringField(body, "name");
+    if (name === undefined) {
+      sendJsonBody(res, 400, { ok: false, error: '"name" must be a string.' });
+      return;
+    }
+    const result = lifecycle.trash(name);
+    sendJsonBody(res, result.ok ? 200 : 400, result);
+  };
+}
+
 function sendFallback(res: ServerResponse, method: string): void {
   res.writeHead(200, {
     "content-type": "text/html; charset=utf-8",
@@ -250,6 +337,7 @@ export function createRequestHandler(
   undoHandler?: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>,
   notesHandler?: NotesApiHandler,
   templatesHandler?: TemplatesApiHandler,
+  lifecycleHandler?: OpenRequestHandler,
 ): (req: IncomingMessage, res: ServerResponse) => void {
   return (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
@@ -266,6 +354,12 @@ export function createRequestHandler(
 
     if (openHandler && url.pathname === API_OPEN_PATH) {
       void openHandler(req, res);
+      return;
+    }
+
+    // Diagram lifecycle (DGC-65): rename + trash. One handler, two paths.
+    if (lifecycleHandler && (url.pathname === API_RENAME_PATH || url.pathname === API_TRASH_PATH)) {
+      void lifecycleHandler(req, res);
       return;
     }
 
