@@ -3,9 +3,12 @@
 [![CI](https://github.com/xidoke/diagram-copilot/actions/workflows/ci.yml/badge.svg)](https://github.com/xidoke/diagram-copilot/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-> Trạng thái: v0.3 "The Copilot Loop" xong — xem [ROADMAP](docs/ROADMAP.md) cho lộ trình đến v1.0.
+> Trạng thái: **v1.0** — 21 MCP tools, eval 10/10 first-try. Xem [ROADMAP](docs/ROADMAP.md) cho lộ trình tiếp theo.
 
 **System Design Studio, local-first, AI-native.** Bạn trò chuyện với Claude Code, sơ đồ kiến trúc đẹp kiểu eraser hiện ra và tiến hóa ngay trên canvas — DSL text là nguồn sự thật duy nhất, chạy hoàn toàn trên máy bạn (Node server local, port 4747), không cần API key riêng ngoài Claude Code đã có sẵn.
+
+![Chat với Claude Code — sơ đồ tiến hóa live trên canvas](docs/demos/demo.gif)
+*Bốn lượt chat: "thiết kế hệ thống checkout" → "tách tier thanh toán" → "chống oversell bằng queue" → "thêm observability" — mỗi câu, Claude ghi DSL qua MCP và canvas tự vẽ lại.*
 
 ![Claude Code drives the canvas](docs/demos/t25-claude-drove-canvas.png)
 *Một phiên Claude Code thật (`claude -p`, headless) đang tạo/sửa sơ đồ qua MCP — canvas cập nhật live, không có bàn tay người can thiệp vào DSL.*

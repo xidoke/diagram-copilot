@@ -143,9 +143,9 @@ Publish sơ đồ thành web page tĩnh share được · template/community gal
 | v0.1 Walking Skeleton | ✅ 2026-07-02 | tag `v0.1` — T1→T8, 149 test, demo live re-render (docs/demos/). Langium OK không cần escape hatch. Vibe song song: 5 worker/wave chạy tốt |
 | v0.2 Beautiful Core | ✅ 2026-07-02 | T9-T16 + T-FIX: groups+attrs, icons, ELK bend-point edges (dist=0.0px verify). **Chờ T17 visual QA — mắt Đô** |
 | v0.3 Copilot Loop | ✅ 2026-07-02 | tag `v0.3` — 11 MCP tools, claude -p headless THẬT drive canvas (docs/demos/t25-claude-drove-canvas.png). Guide eval 5/6 first-try |
-| v0.4 Daily Driver | 🟡 gần xong | drawer Monaco+highlight+markers, picker, export client+server, drag overrides, undo/redo, empty state. **Chờ T32 dogfood — Đô dùng thật** |
-| v0.5 Learning Pack | 🟡 một phần | snapshot_diagram tool ✅, tsx watch ✅, T-FIX ✅; còn steps navigation UI + polish pass |
-| v1.0 Prod-grade | 🟡 bắt đầu | CI workflow ✅ (chờ push GitHub); T38 packaging đang chạy; còn npx+README GIF+license pass |
+| v0.4 Daily Driver | ✅ 2026-07-02 | tag `v0.4` — T32 dogfood Đô duyệt. Drawer, picker, export, drag (edges bám live), undo/redo, group drag |
+| v0.5 Learning Pack | ✅ 2026-07-02 | tag `v0.5` — steps nav, present mode ▶, notes ⌘I, diff_diagram, templates, perf 60-node=190ms |
+| v1.0 Prod-grade | ✅ 2026-07-02 | tag `v1.0` 🚀 — CI xanh, node dist standalone, README GIF, DSL.md, MIT (Đô duyệt), eval 10/10 first-try. npm publish = quyết định riêng của Đô |
 
 ## 8. Horizon hiện tại (PO update 2026-07-02, strategic loop #4)
 - **Đang bay 6 worker:** T-POLISH (3 bug dogfood DnD/label — gate T17 re-review) · DGC-17 DSL printer (nền v1.2, kéo lên sớm vì core lane rảnh + là hướng đúng thay sidecar) · F4 minimap+search · F5 trash/rename · F6 templates · T-THEME light.

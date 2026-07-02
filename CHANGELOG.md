@@ -14,6 +14,27 @@ Format theo [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning
 ### Docs
 - Cập nhật trạng thái roadmap: v0.2 Beautiful Core và v0.3 Copilot Loop đánh dấu hoàn thành.
 
+## [v1.0] - 2026-07-02
+
+Prod-grade 🚀 — cửa ải M8 hoàn thành, cả 4 gate được Đô duyệt (T17 visual QA, T32 dogfood, MIT license, README GIF).
+
+### Added
+- **21 MCP tools** — mới trong đợt này: `validate_dsl`, `export_diagram` (ghi PNG vào vault, whitelist `--export-root`), `get_notes`/`set_notes`, `rename_diagram`/`delete_diagram`/`list_trash`/`restore_diagram`, `edit_diagram` (surgical ops giữ nguyên comment/format), `diff_diagram`.
+- Web: notes panel (⌘I), steps navigation, present mode ▶ (⌘⇧P), MiniMap, tìm node ⌘F (bỏ dấu được), light theme ☀, icon palette 🎨, templates gallery, rename/trash trong picker, kéo group bằng title band.
+- Core: DSL printer + minimal-diff edit primitives (nền v1.2 visual editing) và `diffDocs`.
+- Fixture `microservices.arch` 60 node + benchmark layout (~190ms, budget 1500ms) — `docs/PERF.md`.
+- Eval harness v2 live-MCP: **10/10 scenario first-try** với haiku — `docs/EVAL.md`.
+- CI GitHub Actions (badge trên README), LICENSE MIT, `docs/DSL.md`, README GIF demo.
+
+### Fixed
+- Export PNG mất edges/marker (html-to-image clone svg thô) — inline style + marker defs khi capture.
+- Edge đứng yên khi kéo node/group — anchor-based dirty detect, path động bám handle từng frame.
+- Node con đè lên viền/title group khi kéo — clamp chừa title band 32px.
+- Label edge đè node — label thành first-class citizen trong ELK layout.
+- CORS chặn API dev-mode — vite proxy + relative URLs.
+- Bundle production nối WS cứng về :4747 — giờ nối same-origin (server standalone port tùy chỉnh hết rò dữ liệu chéo instance).
+- Test path-traversal phụ thuộc môi trường (CI Ubuntu bắt được ngay lần chạy đầu).
+
 ## [v0.3] — 2026-07-02 — "The Copilot Loop" ⭐
 
 Gộp cả hai mốc **v0.2 Beautiful Core** và **v0.3 The Copilot Loop** của roadmap (không có tag `v0.2` riêng — xem `docs/ROADMAP.md` mục 7 "Trạng thái"). Đây là khoảnh khắc sản phẩm: Claude Code thật (`claude -p`, headless) lái được canvas qua MCP.
