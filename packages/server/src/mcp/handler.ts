@@ -30,6 +30,7 @@ import type { WorkspaceOps } from "../workspace/watcher.js";
 import type { HistoryStore } from "../history/store.js";
 import { registerWorkspaceTools } from "./tools/workspace.js";
 import { registerDiagramTools } from "./tools/diagram.js";
+import { registerEditDiagramTool } from "./tools/edit.js";
 import { registerSnapshotDiagramTool } from "./tools/snapshot-steps.js";
 import { registerSnapshotTool, type SnapshotOps } from "./tools/snapshot.js";
 import { registerHistoryTools } from "./tools/history.js";
@@ -143,6 +144,7 @@ function registerTools(server: McpServer, options: McpHandlerOptions): void {
   if (options.getWorkspace !== undefined) {
     registerWorkspaceTools(server, options.getWorkspace);
     registerDiagramTools(server, options.getWorkspace);
+    registerEditDiagramTool(server, options.getWorkspace);
     registerSnapshotDiagramTool(server, options.getWorkspace);
     // History (undo/redo) tools plug in only when a history store is also wired.
     if (options.getHistory !== undefined) {
