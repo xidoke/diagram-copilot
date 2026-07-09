@@ -1,4 +1,4 @@
-import type { CoordinateExtent, Edge, Node } from "@xyflow/react";
+import type { Edge, Node } from "@xyflow/react";
 import type { DiagramDoc, Direction } from "@diagram-copilot/core";
 import type { Point, PositionedGraph } from "@diagram-copilot/layout";
 import { ELK_EDGE_TYPE, type ElkEdgeData } from "./ElkEdge.js";
@@ -17,13 +17,10 @@ export const ARCH_GROUP_TYPE = "archGroup";
 export const ARCH_GROUP_DRAG_HANDLE = ".arch-group__title";
 
 /**
- * Drag clamp inside a group (DGC-69): keep a dragged child this many px off
- * the group's left/right/bottom borders…
- */
-export const GROUP_EXTENT_PADDING = 8;
-/**
- * …and this many px off the top — the taller band reserves the group's
- * dashed border + uppercase title row so a child can't be dropped over it.
+ * Reserved top band (px) for a group's dashed border + uppercase title row —
+ * matches the `.arch-group__title` height in `App.css`. Kept as the title
+ * band's documented height; no longer used as a drag clamp (DGC-19 removed the
+ * per-child `extent` so nodes can be dragged in/out of groups).
  */
 export const GROUP_TITLE_BAND = 32;
 
@@ -130,25 +127,13 @@ export function toFlow(doc: DiagramDoc, graph: PositionedGraph): { nodes: Node[]
     });
   }
 
-  // Drag clamp for a child: the parent's box inset by GROUP_EXTENT_PADDING,
-  // with the taller GROUP_TITLE_BAND at the top so drags can't cover the
-  // group's border or title. React Flow resolves a child's CoordinateExtent
-  // in parent-relative coordinates and clamps the node's whole box into it.
-  const childExtent = (parentId: string): CoordinateExtent | undefined => {
-    const parent = absBoxes.get(parentId);
-    if (!parent) return undefined;
-    return [
-      [GROUP_EXTENT_PADDING, GROUP_TITLE_BAND],
-      [parent.width - GROUP_EXTENT_PADDING, parent.height - GROUP_EXTENT_PADDING],
-    ];
-  };
+  // DGC-19: children carry NO `extent`. The old DGC-69 clamp trapped a child
+  // inside its parent group; dragging a node OUT of a group (→ re-nest to root
+  // or another group) needs it to roam the whole canvas. The drop is hit-tested
+  // geometrically on stop (see `reparent.ts` / `App`), not clamped here.
 
   for (const g of graph.groups) {
     const m = meta.get(g.id);
-    // A nested group clamps into its parent just like a leaf does — the same
-    // title-band inset keeps it from covering the parent's border/title
-    // (reuses `childExtent`, DGC-69/T-POLISH). Root groups roam free.
-    const extent = g.parentId ? childExtent(g.parentId) : undefined;
     nodes.push({
       id: g.id,
       type: ARCH_GROUP_TYPE,
@@ -161,12 +146,14 @@ export function toFlow(doc: DiagramDoc, graph: PositionedGraph): { nodes: Node[]
         ...(m?.color !== undefined ? { color: m.color } : {}),
       } satisfies ArchNodeData,
       style: { width: g.width, height: g.height },
-      ...(g.parentId ? { parentId: g.parentId, extent: extent ?? ("parent" as const) } : {}),
+      ...(g.parentId ? { parentId: g.parentId } : {}),
       // Groups drag by their title band only (DGC-71): the body is left to
-      // pan/select and to drag child nodes. Persisted as an override on drag
-      // stop — descendants ride along because their positions are
-      // parent-relative. Still non-selectable (body is a pan surface).
-      selectable: false,
+      // pan and to drag child nodes. Persisted as an override on drag stop —
+      // descendants ride along because their positions are parent-relative.
+      // Selectable now (DGC-19) so a selected group shows its resize handles
+      // (NodeResizer); the wrapper stays `pointer-events:none` in CSS, only the
+      // title band + resize controls opt back in.
+      selectable: true,
       draggable: true,
       dragHandle: ARCH_GROUP_DRAG_HANDLE,
     });
@@ -174,7 +161,6 @@ export function toFlow(doc: DiagramDoc, graph: PositionedGraph): { nodes: Node[]
 
   for (const n of graph.nodes) {
     const m = meta.get(n.id);
-    const extent = n.parentId ? childExtent(n.parentId) : undefined;
     nodes.push({
       id: n.id,
       type: ARCH_NODE_TYPE,
@@ -186,11 +172,10 @@ export function toFlow(doc: DiagramDoc, graph: PositionedGraph): { nodes: Node[]
         ...(m?.color !== undefined ? { color: m.color } : {}),
       } satisfies ArchNodeData,
       style: { width: n.width, height: n.height },
-      // Fall back to the plain parent clamp if the parent box is unknown
-      // (defensive — layout always emits the parent first).
-      ...(n.parentId ? { parentId: n.parentId, extent: extent ?? ("parent" as const) } : {}),
-      // Leaves are draggable so users can nudge positions; the drag is persisted
-      // as a layout override (T30). Groups stay non-draggable (see above).
+      ...(n.parentId ? { parentId: n.parentId } : {}),
+      // Leaves are draggable so users can nudge positions / re-nest them; the
+      // drag is persisted as a layout override (T30) or, on a cross-group drop,
+      // rewritten as a `move_to_group` op (DGC-19).
       draggable: true,
     });
   }

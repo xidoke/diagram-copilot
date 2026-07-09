@@ -17,7 +17,6 @@ import {
 import "@xyflow/react/dist/style.css";
 import "./tokens.css";
 import "./App.css";
-import type { LayoutOverrides } from "@diagram-copilot/core";
 import { layoutDiagram } from "@diagram-copilot/layout";
 import { EmptyState, shouldShowEmptyState } from "./components/EmptyState.js";
 import { ExportMenu } from "./components/ExportMenu.js";
@@ -36,10 +35,23 @@ import { applyPrefs, loadLayoutPrefs, saveLayoutPrefs, type LayoutPrefs } from "
 import { setSnapshotProvider } from "./render/snapshotResponder.js";
 import { ArchGroup, ArchNode } from "./render/ArchNode.js";
 import { EditContext, type EditActions } from "./render/EditContext.js";
-import { buildRemoveOps, describeRemoval, postEdit } from "./render/editRequests.js";
+import { buildRemoveOps, describeRemoval, describeReparent, postEdit } from "./render/editRequests.js";
 import { ELK_EDGE_TYPE, ElkEdge, ElkEdgeMarkerDefs } from "./render/ElkEdge.js";
 import { ARCH_GROUP_TYPE, ARCH_NODE_TYPE, toFlow } from "./render/toFlow.js";
-import { applyOverrides, deleteOverrides, fetchOverrides, markDirtyEdges, putOverrides } from "./render/overrides.js";
+import {
+  applyOverrides,
+  deleteOverrides,
+  fetchOverrides,
+  markDirtyEdges,
+  putOverrides,
+  type SizedOverrides,
+} from "./render/overrides.js";
+import {
+  absoluteBoxes,
+  decideReparent,
+  type AbsBox,
+  type NodeGeom,
+} from "./render/reparent.js";
 import { applyDiffToEdges, applyDiffToNodes, type DiffOverlay } from "./render/diffOverlay.js";
 
 export const APP_TITLE = "diagram-copilot";
@@ -65,6 +77,14 @@ const EDIT_TOAST_TIMEOUT_MS = 3000;
 const nodeTypes = { [ARCH_NODE_TYPE]: ArchNode, [ARCH_GROUP_TYPE]: ArchGroup };
 const edgeTypes = { [ELK_EDGE_TYPE]: ElkEdge };
 
+/** A node's rendered size — `width`/`height` (set by resize/override) win over the
+ *  `style` size `toFlow` gives it. Used to hit-test a drop against group boxes. */
+function nodeSize(n: Node): { width: number; height: number } {
+  const width = typeof n.width === "number" ? n.width : Number(n.style?.width) || 0;
+  const height = typeof n.height === "number" ? n.height : Number(n.style?.height) || 0;
+  return { width, height };
+}
+
 function DiagramCanvas() {
   const { status, lastDiagram, lastError, workspace, send } = useDiagramConnection();
   // `base` is the pure ELK auto-layout; `flow` is what React Flow renders =
@@ -74,9 +94,9 @@ function DiagramCanvas() {
   const [flow, setFlow] = useState<{ nodes: Node[]; edges: Edge[] }>({ nodes: [], edges: [] });
   // Manual position overrides for the active diagram. Mirrored into a ref so the
   // drag handler can build the next record without re-subscribing every render.
-  const [overrides, setOverridesState] = useState<LayoutOverrides>({});
-  const overridesRef = useRef<LayoutOverrides>({});
-  const setOverrides = useCallback((next: LayoutOverrides) => {
+  const [overrides, setOverridesState] = useState<SizedOverrides>({});
+  const overridesRef = useRef<SizedOverrides>({});
+  const setOverrides = useCallback((next: SizedOverrides) => {
     overridesRef.current = next;
     setOverridesState(next);
   }, []);
@@ -175,11 +195,54 @@ function DiagramCanvas() {
     };
   }, [diagramName, setOverrides]);
 
-  // React Flow drag/selection changes → keep the rendered nodes in sync so a
-  // leaf follows the cursor while dragging (persistence happens on drag stop).
-  const onNodesChange = useCallback((changes: NodeChange[]) => {
-    setFlow((f) => ({ ...f, nodes: applyNodeChanges(changes, f.nodes) }));
+  // Live flow snapshot for the drag/resize/delete handlers — a ref so window
+  // listeners and change callbacks don't re-subscribe on every frame.
+  const flowRef = useRef(flow);
+  flowRef.current = flow;
+
+  // Debounced PUT of the whole override record (T30 sidecar).
+  const scheduleSave = useCallback((name: string, next: SizedOverrides) => {
+    if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = window.setTimeout(() => {
+      saveTimerRef.current = null;
+      putOverrides(name, next).catch((err) => console.error("save layout overrides failed", err));
+    }, LAYOUT_SAVE_DEBOUNCE_MS);
   }, []);
+
+  // Group resize (DGC-19): NodeResizer dispatches the new size through
+  // `onNodesChange`; on the terminal frame (`resizing:false`) we persist it as
+  // a layout override — x/y kept so the group stays put — so it survives a
+  // re-layout, and "reset layout" clears it. NOTE: the core sidecar schema
+  // strips width/height today, so the size holds for the session but not across
+  // a reload until that schema gains the two optional fields (see report).
+  const persistGroupSize = useCallback(
+    (id: string, dims: { width: number; height: number } | undefined) => {
+      if (!diagramName || !dims) return;
+      const node = flowRef.current.nodes.find((n) => n.id === id);
+      if (!node || node.type !== ARCH_GROUP_TYPE) return;
+      const next: SizedOverrides = {
+        ...overridesRef.current,
+        [id]: { x: node.position.x, y: node.position.y, width: dims.width, height: dims.height },
+      };
+      setOverrides(next);
+      scheduleSave(diagramName, next);
+    },
+    [diagramName, setOverrides, scheduleSave],
+  );
+
+  // React Flow drag/selection/resize changes → keep the rendered nodes in sync
+  // (a leaf follows the cursor while dragging; a group follows its resize
+  // handles). Drag persistence happens on drag stop; a resize is persisted here
+  // on its terminal frame.
+  const onNodesChange = useCallback(
+    (changes: NodeChange[]) => {
+      setFlow((f) => ({ ...f, nodes: applyNodeChanges(changes, f.nodes) }));
+      for (const c of changes) {
+        if (c.type === "dimensions" && c.resizing === false) persistGroupSize(c.id, c.dimensions);
+      }
+    },
+    [persistGroupSize],
+  );
 
   // Edge selection changes (DGC-78): the flow is controlled, so click-to-select
   // on an edge only sticks if we fold the change back in. Content edits never
@@ -199,11 +262,6 @@ function DiagramCanvas() {
     const id = window.setTimeout(() => setEditToast(null), EDIT_TOAST_TIMEOUT_MS);
     return () => window.clearTimeout(id);
   }, [editToast]);
-
-  // Live flow snapshot for the Delete handler below — a ref so the window
-  // listener does not re-subscribe on every drag frame.
-  const flowRef = useRef(flow);
-  flowRef.current = flow;
 
   // Delete/Backspace removes the current selection by WRITING THE DSL — ops go
   // to /api/edit (all-or-nothing) and the canvas refreshes off the resulting
@@ -241,30 +299,69 @@ function DiagramCanvas() {
     };
   }, [diagramName, showEditToast]);
 
-  const scheduleSave = useCallback((name: string, next: LayoutOverrides) => {
-    if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = window.setTimeout(() => {
-      saveTimerRef.current = null;
-      putOverrides(name, next).catch((err) => console.error("save layout overrides failed", err));
-    }, LAYOUT_SAVE_DEBOUNCE_MS);
-  }, []);
-
-  // Drop of a dragged node OR group (DGC-71): record its position (React Flow
-  // reports it in the node's own frame — parent-relative for children, see
-  // overrides.ts) and persist the whole record, debounced. Groups key the same
-  // override map as leaves; the derive effect re-applies it and their
-  // descendants follow because their positions are parent-relative.
+  // Drop of a dragged node OR group. DGC-19 splits the outcome by where it
+  // landed, hit-testing the dragged box's CENTER against the (absolute) group
+  // boxes with `decideReparent` (self + descendants excluded so a node can't be
+  // nested into its own subtree):
+  //   • dropped in the SAME parent → a plain reposition: record its position as
+  //     a layout override (T30/DGC-71), preserving any size override it carries;
+  //   • dropped in a DIFFERENT group / out to open canvas → rewrite the DSL
+  //     nesting via a `move_to_group` op and drop this node's stale position
+  //     override so ELK re-places it in its new home. No optimistic UI — the
+  //     canvas refreshes off the resulting WS broadcast (edit-toast on failure).
   const handleNodeDragStop = useCallback(
     (node: Node) => {
       if (!diagramName) return;
-      const next: LayoutOverrides = {
+      const all = flowRef.current.nodes;
+      const geoms: NodeGeom[] = all.map((n) => {
+        const { width, height } = nodeSize(n);
+        // The dragged node's authoritative final position is the drag-stop node.
+        return { id: n.id, parentId: n.parentId, position: n.id === node.id ? node.position : n.position, width, height };
+      });
+      const boxes = absoluteBoxes(geoms);
+      const dragged = boxes.get(node.id);
+      const groupBoxes: AbsBox[] = [];
+      for (const n of all) {
+        if (n.type !== ARCH_GROUP_TYPE) continue;
+        const b = boxes.get(n.id);
+        if (b) groupBoxes.push(b);
+      }
+      const decision = dragged
+        ? decideReparent({
+            nodeId: node.id,
+            currentParent: node.parentId ?? null,
+            dropPoint: { x: dragged.x + dragged.width / 2, y: dragged.y + dragged.height / 2 },
+            groups: groupBoxes,
+            nodes: all.map((n) => ({ id: n.id, parentId: n.parentId })),
+          })
+        : ({ changed: false } as const);
+
+      if (decision.changed) {
+        // Re-nest: drop the stale override (its old parent-relative position is
+        // meaningless in the new parent) then rewrite the DSL nesting.
+        if (node.id in overridesRef.current) {
+          const pruned = { ...overridesRef.current };
+          delete pruned[node.id];
+          setOverrides(pruned);
+          scheduleSave(diagramName, pruned);
+        }
+        void postEdit(diagramName, [{ op: "move_to_group", id: node.id, group: decision.group }]).then((result) => {
+          if (result.ok) showEditToast(describeReparent(node.id, decision.group));
+          else showEditToast(`Không đổi nhóm được: ${result.error ?? "lỗi không rõ"}`, true);
+        });
+        return;
+      }
+
+      // Same parent → reposition override. Spread the previous record for this
+      // node first so a group's size override (DGC-19) survives a later drag.
+      const next: SizedOverrides = {
         ...overridesRef.current,
-        [node.id]: { x: node.position.x, y: node.position.y },
+        [node.id]: { ...overridesRef.current[node.id], x: node.position.x, y: node.position.y },
       };
       setOverrides(next);
       scheduleSave(diagramName, next);
     },
-    [diagramName, setOverrides, scheduleSave],
+    [diagramName, setOverrides, scheduleSave, showEditToast],
   );
 
   // "Reset layout": clear pins locally and delete the sidecar; the derive

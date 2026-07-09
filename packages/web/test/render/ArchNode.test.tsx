@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Handle, Position, type NodeProps } from "@xyflow/react";
+import { Handle, NodeResizer, Position, type NodeProps } from "@xyflow/react";
 import { ArchGroup, ArchNode } from "../../src/render/ArchNode.js";
 import type { ArchNodeData } from "../../src/render/toFlow.js";
 
@@ -26,8 +26,9 @@ function collect(node: unknown, out: any[] = []): any[] {
 
 const handles = (el: unknown) => collect(el).filter((n) => n.type === Handle);
 
-const renderGroup = (data: Partial<ArchNodeData>) =>
-  ArchGroup({ data: { label: "VPC", direction: "right", ...data } } as unknown as NodeProps);
+const renderGroup = (data: Partial<ArchNodeData>, extra: Partial<NodeProps> = {}) =>
+  ArchGroup({ data: { label: "VPC", direction: "right", ...data }, ...extra } as unknown as NodeProps);
+const resizers = (el: unknown) => collect(el).filter((n) => n.type === NodeResizer);
 const renderNode = (data: Partial<ArchNodeData>) =>
   ArchNode({ data: { label: "API", direction: "right", ...data } } as unknown as NodeProps);
 
@@ -61,6 +62,16 @@ describe("ArchGroup", () => {
   it("adds the accent class only when a color is set", () => {
     expect((renderGroup({}) as any).props.className).not.toContain("arch-group--accent");
     expect((renderGroup({ color: "blue" }) as any).props.className).toContain("arch-group--accent");
+  });
+
+  it("renders a NodeResizer whose handles show only when the group is selected (DGC-19)", () => {
+    const rs = resizers(renderGroup({}, { selected: true }));
+    expect(rs).toHaveLength(1);
+    expect(rs[0].props.isVisible).toBe(true);
+    // Unselected → the resizer is present but its handles stay hidden.
+    expect(resizers(renderGroup({}, { selected: false }))[0].props.isVisible).toBe(false);
+    // No `selected` prop at all (plain render) reads as not-visible.
+    expect(resizers(renderGroup({}))[0].props.isVisible).toBe(false);
   });
 
   it("renders a small icon chip beside the label when the group has an icon", () => {

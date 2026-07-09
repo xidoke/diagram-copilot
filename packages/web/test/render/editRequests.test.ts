@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   buildRemoveOps,
   describeRemoval,
+  describeReparent,
   validateRename,
   type EditOp,
 } from "../../src/render/editRequests.js";
+import { ARCH_GROUP_TYPE } from "../../src/render/toFlow.js";
 
 describe("buildRemoveOps", () => {
   it("maps every selected node to a remove op, ignoring unselected ones", () => {
@@ -53,6 +55,29 @@ describe("buildRemoveOps", () => {
 
   it("returns no ops when nothing is selected", () => {
     expect(buildRemoveOps([{ id: "A" }], [{ source: "A", target: "B" }])).toEqual([]);
+  });
+
+  it("skips a selected GROUP node so Delete never cascades a whole group (DGC-19)", () => {
+    // Groups became selectable for resize; excluding them here preserves the
+    // pre-DGC-19 behavior where a group can't be deleted from the canvas.
+    const ops = buildRemoveOps(
+      [
+        { id: "VPC", type: ARCH_GROUP_TYPE, selected: true },
+        { id: "API", selected: true },
+      ],
+      [],
+    );
+    expect(ops).toEqual([{ op: "remove", id: "API" }]);
+  });
+});
+
+describe("describeReparent", () => {
+  it("names a move into a group", () => {
+    expect(describeReparent("API", "VPC")).toBe('Đã chuyển "API" vào nhóm "VPC"');
+  });
+
+  it("names a move out to the document root", () => {
+    expect(describeReparent("API", null)).toBe('Đã đưa "API" ra ngoài nhóm');
   });
 });
 
