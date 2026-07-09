@@ -5,6 +5,7 @@ Format theo [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning
 ## [Unreleased]
 
 ### Added
+- v2.0 Phase A: Compare mode ⧉ — canvas chia đôi so 2 step cạnh nhau, trái highlight phần bị xóa (step trước), phải phần thêm (step hiện tại), ←/→ trượt theo cặp, Esc thoát (DGC-88).
 - Visual editing v1.2: double-click edge sửa label bằng inline input (Enter/Esc, trống = bỏ label — một op `set_attr` giữ nguyên vị trí dòng DSL), Alt-drag connect dùng cùng input thay `window.prompt`; node thả từ palette nằm đúng điểm thả qua layout override, reset layout đưa về ELK (DGC-85, DGC-86).
 - Visual editing v1.2: context menu right-click (đổi icon/màu, xóa — group xóa có confirm), Cmd+D duplicate, multi-select Shift+drag marquee + Shift-click (DGC-20).
 - Visual editing v1.2: kéo node vào/ra group đổi nesting DSL thật (`move_to_group`, không nest vào subtree của chính nó); resize group bằng NodeResizer lưu layout override (bền trong session — bền qua reload chờ DGC-87); headless fallback tự retry khi client kết nối nhưng câm (zombie tab) (DGC-19, DGC-84).
