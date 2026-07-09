@@ -259,6 +259,28 @@ export function buildAddEdgeOp(
   return op;
 }
 
+/**
+ * Build the op that rewrites an existing edge's label (DGC-85, double-click an
+ * edge). Edges support the dedicated `set_attr {key:"label"}` op — addressed by
+ * the edge's positional `eN` id, which is fresh at double-click time because the
+ * canvas re-renders off every broadcast — so a single op suffices (it preserves
+ * the edge's position in the DSL text, unlike a remove_edge + add_edge pair):
+ * - a new label DIFFERENT from the current one → a `set_attr` op (empty/blank
+ *   value clears the label: it sends `null`, which the server's `setAttr` maps
+ *   to "delete the label");
+ * - a new label EQUAL to the current one (trim-compared) → `null` (no-op): the
+ *   caller sends nothing, so an accidental double-click + Enter is free.
+ */
+export function buildSetEdgeLabelOp(
+  edgeId: string,
+  currentLabel: string,
+  raw: string,
+): Extract<EditOp, { op: "set_attr" }> | null {
+  const next = raw.trim();
+  if (next === currentLabel.trim()) return null;
+  return { op: "set_attr", id: edgeId, key: "label", value: next === "" ? null : next };
+}
+
 /** JSON receipt shape `POST /api/edit` answers with (see server `edit-executor.ts`). */
 export interface EditApiResult {
   ok: boolean;
