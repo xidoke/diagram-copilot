@@ -15,6 +15,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ServerMessage } from "@diagram-copilot/core";
 import { createServer, WELCOME_WORKSPACE, WS_PATH } from "./server.js";
+import { expandTilde } from "./mcp/tools/export-file.js";
 import { createClientUpdateHandler } from "./client-updates.js";
 import { MCP_PATH, createOpenHandler, createLifecycleHttpHandler } from "./http.js";
 import { createEditApiHandler } from "./edit-executor.js";
@@ -47,6 +48,33 @@ export const DEFAULT_OBSIDIAN_VAULT_ROOT =
   "~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian_Vault";
 
 /**
+ * Env var declaring EXTRA `export_diagram` whitelist roots, ADDED ON TOP of
+ * `--export-root` (or the Obsidian vault default) — never replaces them. This
+ * lets a deployment (e.g. `pnpm dev`, which passes no CLI flags) grant an
+ * extra root without editing any script or code, by exporting the var before
+ * launch (DGC-81).
+ */
+export const EXPORT_ROOTS_ENV_VAR = "DIAGRAM_COPILOT_EXPORT_ROOTS";
+
+/**
+ * Parse {@link EXPORT_ROOTS_ENV_VAR} into a list of extra whitelist roots.
+ * Entries are separated by `path.delimiter` (`:` on macOS/Linux, `;` on
+ * Windows), trimmed, and empty entries — `undefined`/`""` input, or a blank
+ * slot between two delimiters (`"/a::/b"`) — are dropped. A leading `~`/`~/`
+ * in an entry is expanded against the home directory via {@link expandTilde}
+ * (the same helper `resolveExportDestination` uses), so `~/vault` works the
+ * same way it does for `--export-root`.
+ */
+export function parseExportRootsEnv(value: string | undefined): string[] {
+  if (value === undefined) return [];
+  return value
+    .split(path.delimiter)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
+    .map((entry) => expandTilde(entry));
+}
+
+/**
  * Locate the built web bundle relative to this module. Resolves to
  * `packages/web/dist` from both `src/` (tsx dev) and `dist/` (built bin).
  */
@@ -73,14 +101,20 @@ interface CliOptions {
   /**
    * EXTRA whitelisted roots a caller-supplied `export_diagram` `path` may write
    * into, beyond the always-allowed `exportDir`. From `--export-root`
-   * (repeatable) or the Obsidian vault default. May contain `~` — expanded by
-   * the export tool at call time.
+   * (repeatable, or the Obsidian vault default when absent) PLUS whatever
+   * {@link EXPORT_ROOTS_ENV_VAR} declares — additive, never a replacement. May
+   * contain `~` — expanded by the export tool at call time (already expanded
+   * here for the env-var entries, see {@link parseExportRootsEnv}).
    */
   exportRoots: string[];
 }
 
-/** Parse argv into validated CLI options, throwing a friendly error on bad input. */
-export function parseCliArgs(argv: string[]): CliOptions {
+/**
+ * Parse argv (+ env) into validated CLI options, throwing a friendly error on
+ * bad input. `env` defaults to `process.env` and is only a parameter so tests
+ * can pass a fake one without mutating global state.
+ */
+export function parseCliArgs(argv: string[], env: NodeJS.ProcessEnv = process.env): CliOptions {
   const { values } = parseArgs({
     args: argv,
     options: {
@@ -107,9 +141,13 @@ export function parseCliArgs(argv: string[]): CliOptions {
   const exportDir = values["export-dir"] ?? path.join(workspace, "exports");
 
   // Extra whitelist roots for `export_diagram` beyond `exportDir` (which the
-  // tool always allows implicitly): the `--export-root` entries, or the
-  // Obsidian vault default when none are given.
-  const exportRoots = values["export-root"] ?? [DEFAULT_OBSIDIAN_VAULT_ROOT];
+  // tool always allows implicitly): the `--export-root` entries (or the
+  // Obsidian vault default when none are given), PLUS anything declared via
+  // `DIAGRAM_COPILOT_EXPORT_ROOTS` — additive, so declaring an extra root
+  // never requires touching a flag or script (DGC-81).
+  const cliRoots = values["export-root"] ?? [DEFAULT_OBSIDIAN_VAULT_ROOT];
+  const envRoots = parseExportRootsEnv(env[EXPORT_ROOTS_ENV_VAR]);
+  const exportRoots = [...cliRoots, ...envRoots];
 
   return { port, workspace, exportDir, exportRoots };
 }
