@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, readdirSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WebSocket } from "ws";
 import type { ServerMessage } from "@diagram-copilot/core";
 import type { BroadcastOptions } from "../src/server.js";
@@ -14,6 +14,15 @@ import {
 const VALID_DEMO_DSL = ["direction right", "", "Client", "Server", "", "Client > Server"].join("\n");
 const OTHER_VALID_DSL = ["Alpha", "Beta", "", "Alpha > Beta"].join("\n");
 const INVALID_DSL = "Client >";
+
+// Several tests below wait on a real debounced chokidar fs event via
+// waitForMessage() (see collector()), whose own safety-net timeout defaults
+// to 10s. Vitest's default 5s testTimeout would otherwise kill the test
+// before that wait gets a chance to resolve under load — raise the file's
+// default so it can never truncate the wait first (DGC-83). Harmless for the
+// many synchronous tests in this file: it only raises the ceiling, it does
+// not slow anything down.
+vi.setConfig({ testTimeout: 15000 });
 
 /** Track watchers/temp dirs so every test tears down cleanly. */
 const openWatchers = new Set<WorkspaceWatcher>();
@@ -32,10 +41,70 @@ function makeTempDir(): string {
   return dir;
 }
 
-/** A `broadcast` collector: every message the watcher would have sent, in order. */
-function collector(): { messages: ServerMessage[]; broadcast: (message: ServerMessage) => void } {
+/**
+ * A `broadcast` collector: every message the watcher would have sent, in
+ * order, plus `waitForMessage` to await a specific future one.
+ *
+ * `waitForMessage` is event-driven, not polled: it resolves the instant a
+ * matching message is broadcast (synchronously, from inside the watcher's own
+ * debounced fs-event handler), rather than racing a fixed poll interval
+ * against a fixed timeout. That distinction matters under load — chokidar's
+ * fs-event delivery plus the watcher's DEBOUNCE_MS can legitimately take
+ * longer than a tight poll timeout allows, which made assertions that polled
+ * `getState()`/`messages` on a short clock (e.g. the sticky-fallback test,
+ * DGC-83) flaky on a busy machine even though the watcher was working
+ * correctly, just slower to observe. `timeoutMs` here is a generous safety
+ * net for a genuinely stuck watcher, not a race budget, so it costs nothing
+ * on a passing run and only matters when something is actually wrong.
+ *
+ * Deliberately only matches broadcasts that happen AFTER `waitForMessage` is
+ * called, ignoring anything already in `messages` — every caller in this
+ * suite wants "the next matching event", and some target states (e.g.
+ * `active: "demo"`) also describe the watcher's very first broadcast, which
+ * would otherwise resolve immediately on stale history instead of waiting
+ * for the fs event under test.
+ */
+function collector(): {
+  messages: ServerMessage[];
+  broadcast: (message: ServerMessage) => void;
+  waitForMessage: (predicate: (message: ServerMessage) => boolean, timeoutMs?: number) => Promise<ServerMessage>;
+} {
   const messages: ServerMessage[] = [];
-  return { messages, broadcast: (message) => messages.push(message) };
+  const waiters: Array<{ predicate: (message: ServerMessage) => boolean; settle: (message: ServerMessage) => void }> =
+    [];
+
+  const broadcast = (message: ServerMessage): void => {
+    messages.push(message);
+    for (let i = waiters.length - 1; i >= 0; i--) {
+      if (waiters[i]!.predicate(message)) {
+        const [waiter] = waiters.splice(i, 1);
+        waiter!.settle(message);
+      }
+    }
+  };
+
+  function waitForMessage(
+    predicate: (message: ServerMessage) => boolean,
+    timeoutMs = 10000,
+  ): Promise<ServerMessage> {
+    return new Promise((resolve, reject) => {
+      const waiter = {
+        predicate,
+        settle: (message: ServerMessage) => {
+          clearTimeout(timer);
+          resolve(message);
+        },
+      };
+      const timer = setTimeout(() => {
+        const index = waiters.indexOf(waiter);
+        if (index >= 0) waiters.splice(index, 1);
+        reject(new Error(`waitForMessage: no matching broadcast within ${timeoutMs}ms`));
+      }, timeoutMs);
+      waiters.push(waiter);
+    });
+  }
+
+  return { messages, broadcast, waitForMessage };
 }
 
 async function watch(dir: string, broadcast: (message: ServerMessage) => void): Promise<WorkspaceWatcher> {
@@ -43,21 +112,6 @@ async function watch(dir: string, broadcast: (message: ServerMessage) => void): 
   openWatchers.add(watcher);
   await watcher.start();
   return watcher;
-}
-
-/** Poll `check` until it passes or the timeout elapses, for debounced async assertions. */
-async function waitFor(check: () => void, timeoutMs = 1000): Promise<void> {
-  const start = Date.now();
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
-    try {
-      check();
-      return;
-    } catch (error) {
-      if (Date.now() - start > timeoutMs) throw error;
-      await new Promise((r) => setTimeout(r, 20));
-    }
-  }
 }
 
 describe("createWorkspaceWatcher — initial scan", () => {
@@ -137,13 +191,14 @@ describe("createWorkspaceWatcher — file changes", () => {
     const dir = makeTempDir();
     const filePath = path.join(dir, "demo.arch");
     writeFileSync(filePath, VALID_DEMO_DSL);
-    const { messages, broadcast } = collector();
+    const { messages, broadcast, waitForMessage } = collector();
     const watcher = await watch(dir, broadcast);
     expect(messages).toHaveLength(2); // initial workspace + diagram
 
     writeFileSync(filePath, OTHER_VALID_DSL);
 
-    await waitFor(() => expect(messages).toHaveLength(3), 2000);
+    await waitForMessage((m) => m.kind === "diagram" && m.name === "demo" && m.version === 2);
+    expect(messages).toHaveLength(3);
     expect(messages[2]).toMatchObject({ kind: "diagram", name: "demo", version: 2, origin: "file" });
     expect(watcher.getState().versions.get("demo")).toBe(2);
   });
@@ -152,13 +207,14 @@ describe("createWorkspaceWatcher — file changes", () => {
     const dir = makeTempDir();
     const filePath = path.join(dir, "demo.arch");
     writeFileSync(filePath, VALID_DEMO_DSL);
-    const { messages, broadcast } = collector();
+    const { messages, broadcast, waitForMessage } = collector();
     const watcher = await watch(dir, broadcast);
     expect(watcher.getState().versions.get("demo")).toBe(1);
 
     writeFileSync(filePath, INVALID_DSL);
 
-    await waitFor(() => expect(messages).toHaveLength(3), 2000);
+    await waitForMessage((m) => m.kind === "diagram-error" && m.name === "demo");
+    expect(messages).toHaveLength(3);
     expect(messages[2]).toMatchObject({
       kind: "diagram-error",
       name: "demo",
@@ -171,13 +227,14 @@ describe("createWorkspaceWatcher — file changes", () => {
   it("broadcasts a workspace message when a second (non-active) file is added", async () => {
     const dir = makeTempDir();
     writeFileSync(path.join(dir, "demo.arch"), VALID_DEMO_DSL);
-    const { messages, broadcast } = collector();
+    const { messages, broadcast, waitForMessage } = collector();
     const watcher = await watch(dir, broadcast);
     expect(messages).toHaveLength(2);
 
     writeFileSync(path.join(dir, "other.arch"), OTHER_VALID_DSL);
 
-    await waitFor(() => expect(messages).toHaveLength(3), 2000);
+    await waitForMessage((m) => m.kind === "workspace" && m.diagrams.includes("other"));
+    expect(messages).toHaveLength(3);
     expect(messages[2]).toEqual({ kind: "workspace", diagrams: ["demo", "other"], active: "demo" });
     // Non-active file content is never parsed/broadcast as a diagram message.
     expect(messages.some((m) => m.kind === "diagram" && m.name === "other")).toBe(false);
@@ -188,13 +245,14 @@ describe("createWorkspaceWatcher — file changes", () => {
     const dir = makeTempDir();
     writeFileSync(path.join(dir, "demo.arch"), VALID_DEMO_DSL);
     writeFileSync(path.join(dir, "other.arch"), OTHER_VALID_DSL);
-    const { messages, broadcast } = collector();
+    const { messages, broadcast, waitForMessage } = collector();
     const watcher = await watch(dir, broadcast);
     expect(messages).toHaveLength(2);
 
     unlinkSync(path.join(dir, "other.arch"));
 
-    await waitFor(() => expect(messages).toHaveLength(3), 2000);
+    await waitForMessage((m) => m.kind === "workspace" && !m.diagrams.includes("other"));
+    expect(messages).toHaveLength(3);
     expect(messages[2]).toEqual({ kind: "workspace", diagrams: ["demo"], active: "demo" });
     expect(watcher.getState().diagrams).toEqual(["demo"]);
     expect(watcher.getState().active).toBe("demo");
@@ -204,19 +262,19 @@ describe("createWorkspaceWatcher — file changes", () => {
     const dir = makeTempDir();
     writeFileSync(path.join(dir, "alpha.arch"), OTHER_VALID_DSL);
     writeFileSync(path.join(dir, "demo.arch"), VALID_DEMO_DSL);
-    const { messages, broadcast } = collector();
+    const { messages, broadcast, waitForMessage } = collector();
     const watcher = await watch(dir, broadcast);
     expect(watcher.getState().active).toBe("demo");
 
     unlinkSync(path.join(dir, "demo.arch"));
 
-    await waitFor(() => expect(watcher.getState().active).toBe("alpha"), 2000);
+    const diagramUpdate = await waitForMessage((m) => m.kind === "diagram" && m.name === "alpha");
+    expect(diagramUpdate).toMatchObject({ kind: "diagram", name: "alpha", version: 1 });
+    expect(watcher.getState().active).toBe("alpha");
     const workspaceUpdate = messages.find(
       (m, i) => i > 1 && m.kind === "workspace" && m.active === "alpha",
     );
     expect(workspaceUpdate).toBeDefined();
-    const diagramUpdate = messages.find((m) => m.kind === "diagram" && m.name === "alpha");
-    expect(diagramUpdate).toMatchObject({ kind: "diagram", name: "alpha", version: 1 });
   });
 
   it("ignores non-.arch files entirely", async () => {
@@ -241,7 +299,7 @@ describe("createWorkspaceWatcher — setActive (sticky)", () => {
     const dir = makeTempDir();
     writeFileSync(path.join(dir, "alpha.arch"), OTHER_VALID_DSL);
     writeFileSync(path.join(dir, "demo.arch"), VALID_DEMO_DSL);
-    const { messages, broadcast } = collector();
+    const { messages, broadcast, waitForMessage } = collector();
     const watcher = await watch(dir, broadcast);
     expect(watcher.getState().active).toBe("demo"); // demo wins by default
 
@@ -252,7 +310,7 @@ describe("createWorkspaceWatcher — setActive (sticky)", () => {
 
     // Adding another file must NOT steal active back from the sticky choice.
     writeFileSync(path.join(dir, "beta.arch"), OTHER_VALID_DSL);
-    await waitFor(() => expect(watcher.getState().diagrams).toContain("beta"), 2000);
+    await waitForMessage((m) => m.kind === "workspace" && m.diagrams.includes("beta"));
     expect(watcher.getState().active).toBe("alpha");
   });
 
@@ -260,15 +318,19 @@ describe("createWorkspaceWatcher — setActive (sticky)", () => {
     const dir = makeTempDir();
     writeFileSync(path.join(dir, "alpha.arch"), OTHER_VALID_DSL);
     writeFileSync(path.join(dir, "demo.arch"), VALID_DEMO_DSL);
-    const { broadcast } = collector();
+    const { broadcast, waitForMessage } = collector();
     const watcher = await watch(dir, broadcast);
 
     watcher.setActive("alpha");
     expect(watcher.getState().active).toBe("alpha");
 
     unlinkSync(path.join(dir, "alpha.arch"));
-    // Sticky choice is gone → auto-select resumes and prefers demo.
-    await waitFor(() => expect(watcher.getState().active).toBe("demo"), 2000);
+    // Sticky choice is gone → auto-select resumes and prefers demo. Wait for
+    // the broadcast that carries this (event-driven), not a poll of
+    // getState() racing a fixed timeout — see collector()'s waitForMessage
+    // doc comment for why (DGC-83).
+    await waitForMessage((m) => m.kind === "workspace" && m.active === "demo");
+    expect(watcher.getState().active).toBe("demo");
   });
 });
 
@@ -458,7 +520,7 @@ describe("createWorkspaceWatcher — update", () => {
     const dir = makeTempDir();
     const filePath = path.join(dir, "demo.arch");
     writeFileSync(filePath, VALID_DEMO_DSL);
-    const { messages, broadcast } = collector();
+    const { messages, broadcast, waitForMessage } = collector();
     const watcher = await watch(dir, broadcast);
 
     watcher.update("demo", OTHER_VALID_DSL);
@@ -475,7 +537,8 @@ describe("createWorkspaceWatcher — update", () => {
 
     // A genuinely different edit still comes through as a normal file change.
     writeFileSync(filePath, VALID_DEMO_DSL);
-    await waitFor(() => expect(watcher.getState().versions.get("demo")).toBe(3), 2000);
+    await waitForMessage((m) => m.kind === "diagram" && m.name === "demo" && m.version === 3);
+    expect(watcher.getState().versions.get("demo")).toBe(3);
     expect(messages.at(-1)).toMatchObject({ kind: "diagram", name: "demo", version: 3, origin: "file" });
   });
 
