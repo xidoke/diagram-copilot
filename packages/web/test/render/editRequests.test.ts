@@ -2,16 +2,20 @@ import { describe, expect, it } from "vitest";
 import {
   buildAddEdgeOp,
   buildDropNodeOp,
+  buildDuplicateOp,
+  buildDuplicateOps,
   buildRemoveOps,
+  buildSetAttrOp,
   describeRemoval,
   describeReparent,
   groupAtPoint,
   uniqueName,
   validateRename,
+  type DuplicableNode,
   type EditOp,
   type GroupBox,
 } from "../../src/render/editRequests.js";
-import { ARCH_GROUP_TYPE } from "../../src/render/toFlow.js";
+import { ARCH_GROUP_TYPE, ARCH_NODE_TYPE } from "../../src/render/toFlow.js";
 
 describe("buildRemoveOps", () => {
   it("maps every selected node to a remove op, ignoring unselected ones", () => {
@@ -192,6 +196,121 @@ describe("groupAtPoint", () => {
 
   it("nests on an inclusive border", () => {
     expect(groupAtPoint(140, 140, boxes)).toBe("Cache");
+  });
+});
+
+describe("buildSetAttrOp", () => {
+  it("builds a set_attr op that changes an icon (context menu → op)", () => {
+    expect(buildSetAttrOp("API", "icon", "lambda")).toEqual({
+      op: "set_attr",
+      id: "API",
+      key: "icon",
+      value: "lambda",
+    });
+  });
+
+  it("builds a set_attr op that changes a color", () => {
+    expect(buildSetAttrOp("API", "color", "orange")).toEqual({
+      op: "set_attr",
+      id: "API",
+      key: "color",
+      value: "orange",
+    });
+  });
+
+  it("passes null through to remove an attribute (bỏ icon / bỏ màu)", () => {
+    expect(buildSetAttrOp("API", "color", null)).toEqual({
+      op: "set_attr",
+      id: "API",
+      key: "color",
+      value: null,
+    });
+  });
+});
+
+describe("buildDuplicateOp", () => {
+  it("names the copy via uniqueName (-2 suffix) against the taken set", () => {
+    const op = buildDuplicateOp({ id: "API", type: ARCH_NODE_TYPE }, new Set(["API"]));
+    expect(op).toEqual({ op: "add_node", name: "API-2" });
+  });
+
+  it("copies icon and color attrs from the original node's data", () => {
+    const op = buildDuplicateOp(
+      { id: "cache", type: ARCH_NODE_TYPE, data: { icon: "redis", color: "orange", label: "cache" } },
+      new Set(["cache"]),
+    );
+    expect(op).toEqual({ op: "add_node", name: "cache-2", icon: "redis", color: "orange" });
+  });
+
+  it("copies an EXPLICIT label (one that differs from the id) verbatim", () => {
+    const op = buildDuplicateOp(
+      { id: "api", type: ARCH_NODE_TYPE, data: { label: "API Server" } },
+      new Set(["api"]),
+    );
+    expect(op).toEqual({ op: "add_node", name: "api-2", label: "API Server" });
+  });
+
+  it("omits a DEFAULT label (label === id) so the copy shows its new unique name", () => {
+    const op = buildDuplicateOp(
+      { id: "API", type: ARCH_NODE_TYPE, data: { label: "API" } },
+      new Set(["API"]),
+    );
+    expect(op).toEqual({ op: "add_node", name: "API-2" });
+  });
+
+  it("keeps the copy in the same group as the original (parentId → group)", () => {
+    const op = buildDuplicateOp(
+      { id: "redis", type: ARCH_NODE_TYPE, parentId: "Cache", data: { icon: "redis" } },
+      new Set(["redis"]),
+    );
+    expect(op).toEqual({ op: "add_node", name: "redis-2", icon: "redis", group: "Cache" });
+  });
+
+  it("ignores non-string / empty attr values", () => {
+    const op = buildDuplicateOp(
+      { id: "n", type: ARCH_NODE_TYPE, data: { icon: 42, color: "", label: undefined } },
+      new Set(["n"]),
+    );
+    expect(op).toEqual({ op: "add_node", name: "n-2" });
+  });
+});
+
+describe("buildDuplicateOps", () => {
+  it("duplicates every selected leaf node with batch-safe unique names", () => {
+    const nodes: DuplicableNode[] = [
+      { id: "API", type: ARCH_NODE_TYPE },
+      { id: "DB", type: ARCH_NODE_TYPE, data: { color: "blue" } },
+    ];
+    expect(buildDuplicateOps(nodes, ["API", "DB"])).toEqual([
+      { op: "add_node", name: "API-2" },
+      { op: "add_node", name: "DB-2", color: "blue" },
+    ]);
+  });
+
+  it("accumulates generated names so two copies in one batch never collide", () => {
+    // Duplicating both "API" and its existing copy "API-2" at once must yield
+    // distinct names — the second op must see the first op's name as taken.
+    const nodes: DuplicableNode[] = [
+      { id: "API", type: ARCH_NODE_TYPE },
+      { id: "API-2", type: ARCH_NODE_TYPE },
+    ];
+    const ops = buildDuplicateOps(nodes, ["API", "API-2"]);
+    const names = ops.map((o) => o.name);
+    expect(new Set(names).size).toBe(2);
+    expect(names).toEqual(["API-3", "API-2-2"]);
+  });
+
+  it("skips GROUP nodes — a group can't be duplicated via add_node (v1 non-goal)", () => {
+    const nodes: DuplicableNode[] = [
+      { id: "VPC", type: ARCH_GROUP_TYPE },
+      { id: "API", type: ARCH_NODE_TYPE },
+    ];
+    expect(buildDuplicateOps(nodes, ["VPC", "API"])).toEqual([{ op: "add_node", name: "API-2" }]);
+  });
+
+  it("returns no ops for an empty / group-only selection", () => {
+    expect(buildDuplicateOps([], [])).toEqual([]);
+    expect(buildDuplicateOps([{ id: "VPC", type: ARCH_GROUP_TYPE }], ["VPC"])).toEqual([]);
   });
 });
 

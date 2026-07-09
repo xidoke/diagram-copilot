@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveColor } from "../../src/render/colors.js";
+import { COLOR_TOKENS, resolveColor } from "../../src/render/colors.js";
 
 describe("resolveColor", () => {
   it("resolves known named colors to theme B hex values", () => {
@@ -26,5 +26,15 @@ describe("resolveColor", () => {
   it("falls back to the theme accent for an unrecognized name", () => {
     expect(resolveColor("mystery-color")).toBe("var(--accent)");
     expect(resolveColor("")).toBe("var(--accent)");
+  });
+});
+
+describe("COLOR_TOKENS", () => {
+  it("lists exactly the DSL-supported color names, each resolvable (context-menu swatches source)", () => {
+    expect(COLOR_TOKENS).toEqual(["blue", "orange", "green", "red", "purple", "pink", "yellow", "teal", "gray"]);
+    for (const token of COLOR_TOKENS) {
+      // Every swatch token must resolve to a real hex value, not the fallback.
+      expect(resolveColor(token)).toMatch(/^#[0-9a-f]{6}$/i);
+    }
   });
 });

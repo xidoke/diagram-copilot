@@ -1,0 +1,224 @@
+/* Right-click context menu (DGC-20). Portaled to <body>, fixed at the click.
+   Themes through the shared --… tokens like the rest of the floating chrome. */
+.ctx-menu {
+  position: fixed;
+  z-index: 40;
+  min-width: 190px;
+  max-width: 240px;
+  padding: 6px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--panel-translucent);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 8px 24px var(--panel-shadow-color, rgba(0, 0, 0, 0.4));
+  font-size: 12px;
+  color: var(--text);
+  user-select: none;
+}
+
+.ctx-menu__title {
+  padding: 4px 8px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ctx-menu__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+.ctx-menu__item:hover {
+  background: var(--accent-soft-bg);
+  color: var(--accent);
+}
+.ctx-menu__item--danger:hover {
+  background: rgba(255, 107, 107, 0.16);
+  color: #ff8484;
+}
+.ctx-menu__chevron {
+  color: var(--text-dim);
+}
+.ctx-menu__sep {
+  height: 1px;
+  margin: 4px 4px;
+  background: var(--border);
+}
+
+/* Icon + color pickers (sub-views). */
+.ctx-menu__picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ctx-menu__pickhead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ctx-menu__back {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.ctx-menu__back:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.ctx-menu__picktitle {
+  font-weight: 600;
+  color: var(--text-strong);
+}
+.ctx-menu__search {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+}
+.ctx-menu__search:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.ctx-menu__clear {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+.ctx-menu__clear:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.ctx-menu__icongrid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.ctx-menu__iconcell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+}
+.ctx-menu__iconcell:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.ctx-menu__iconcell.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft-bg);
+}
+.ctx-menu__glyph {
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+}
+.ctx-menu__glyph svg {
+  width: 100%;
+  height: 100%;
+}
+.ctx-menu__empty {
+  margin: 4px 8px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.ctx-menu__swatches {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+  padding: 2px 0;
+}
+.ctx-menu__swatch {
+  aspect-ratio: 1;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+.ctx-menu__swatch:hover {
+  border-color: var(--text);
+}
+.ctx-menu__swatch.is-active {
+  border-color: var(--text-strong);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.25),
+    0 0 0 2px var(--accent);
+}
+
+/* Inline delete confirm (groups). */
+.ctx-menu__confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px;
+}
+.ctx-menu__confirmtext {
+  margin: 0;
+  line-height: 1.4;
+  color: var(--text);
+}
+.ctx-menu__confirmrow {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.ctx-menu__btn {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ctx-menu__btn:hover {
+  border-color: var(--accent);
+}
+.ctx-menu__btn--danger {
+  border-color: rgba(255, 107, 107, 0.55);
+  color: #ff8484;
+}
+.ctx-menu__btn--danger:hover {
+  background: rgba(255, 107, 107, 0.16);
+  border-color: #ff8484;
+}

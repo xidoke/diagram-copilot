@@ -15,6 +15,7 @@ import {
   type EdgeChange,
   type Node,
   type NodeChange,
+  type NodeMouseHandler,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import "./tokens.css";
@@ -40,13 +41,16 @@ import { EditContext, type EditActions } from "./render/EditContext.js";
 import {
   buildAddEdgeOp,
   buildDropNodeOp,
+  buildDuplicateOps,
   buildRemoveOps,
+  buildSetAttrOp,
   describeRemoval,
   describeReparent,
   groupAtPoint,
   postEdit,
   type GroupBox,
 } from "./render/editRequests.js";
+import { ContextMenu, type ContextMenuTarget } from "./components/ContextMenu.js";
 import { ICON_DND_MIME } from "./components/IconPalette.js";
 import { ELK_EDGE_TYPE, ElkEdge, ElkEdgeMarkerDefs } from "./render/ElkEdge.js";
 import { ARCH_GROUP_TYPE, ARCH_NODE_TYPE, toFlow } from "./render/toFlow.js";
@@ -129,6 +133,9 @@ function DiagramCanvas() {
   // Δ diff overlay (DGC-79) — the class maps StepsNav computes when its Δ toggle
   // is on; `null` when off. Folded onto the derived flow below.
   const [diffOverlay, setDiffOverlay] = useState<DiffOverlay | null>(null);
+  // Right-click context menu (DGC-20) — `null` when closed. Carries the target
+  // node/group plus the viewport point the menu anchors at.
+  const [contextMenu, setContextMenu] = useState<{ target: ContextMenuTarget; x: number; y: number } | null>(null);
   const { fitView, getNodes, getNodesBounds } = useReactFlow();
 
   useEffect(() => {
@@ -275,27 +282,91 @@ function DiagramCanvas() {
     return () => window.clearTimeout(id);
   }, [editToast]);
 
-  // Delete/Backspace removes the current selection by WRITING THE DSL — ops go
-  // to /api/edit (all-or-nothing) and the canvas refreshes off the resulting
-  // broadcast; no local content state is touched. Ignored while typing in an
-  // input/textarea/Monaco (same guard as the ⌘Z shortcut).
+  // Canvas keyboard edits — all write the DSL via /api/edit (all-or-nothing) and
+  // refresh off the resulting broadcast; no local content state is touched. All
+  // ignored while typing in an input/textarea/Monaco (same guard as ⌘Z):
+  //   • Delete/Backspace → remove the current selection (leaves + edges; a
+  //     selected group is skipped by buildRemoveOps, DGC-19);
+  //   • ⌘D / Ctrl+D → duplicate the selected leaf nodes (DGC-20), copying
+  //     icon/color/label and keeping each copy in the original's group. The
+  //     default (browser bookmark) is suppressed.
   useEffect(() => {
     if (!diagramName) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== "Delete" && e.key !== "Backspace") return;
       if (isEditableTarget(e.target)) return;
-      const ops = buildRemoveOps(flowRef.current.nodes, flowRef.current.edges);
-      if (ops.length === 0) return;
-      e.preventDefault();
-      const what = describeRemoval(ops);
-      void postEdit(diagramName, ops).then((result) => {
-        if (result.ok) showEditToast(`Đã xóa ${what} — Undo để hoàn tác`);
-        else showEditToast(`Không xóa được ${what}: ${result.error ?? "lỗi không rõ"}`, true);
-      });
+
+      if ((e.metaKey || e.ctrlKey) && (e.key === "d" || e.key === "D")) {
+        // Block the browser's Cmd+D bookmark whenever it fires over the canvas,
+        // whether or not there's a node to duplicate.
+        e.preventDefault();
+        const selected = flowRef.current.nodes.filter((n) => n.selected === true);
+        const ops = buildDuplicateOps(selected, flowRef.current.nodes.map((n) => n.id));
+        if (ops.length === 0) return;
+        const what = ops.length === 1 ? `"${ops[0].name}"` : `${ops.length} node`;
+        void postEdit(diagramName, ops).then((result) => {
+          if (result.ok) showEditToast(`Đã nhân bản ${what} — Undo để hoàn tác`);
+          else showEditToast(`Không nhân bản được ${what}: ${result.error ?? "lỗi không rõ"}`, true);
+        });
+        return;
+      }
+
+      if (e.key === "Delete" || e.key === "Backspace") {
+        const ops = buildRemoveOps(flowRef.current.nodes, flowRef.current.edges);
+        if (ops.length === 0) return;
+        e.preventDefault();
+        const what = describeRemoval(ops);
+        void postEdit(diagramName, ops).then((result) => {
+          if (result.ok) showEditToast(`Đã xóa ${what} — Undo để hoàn tác`);
+          else showEditToast(`Không xóa được ${what}: ${result.error ?? "lỗi không rõ"}`, true);
+        });
+      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [diagramName, showEditToast]);
+
+  // ── Right-click context menu (DGC-20): open on a node/group, act via ops ──
+  // React Flow hands us the DOM event + the node; we anchor the menu at the
+  // pointer and stash the target's id/type/attrs for the pickers. `onPane
+  // ContextMenu` (and any left-click, handled inside ContextMenu) closes it.
+  const onNodeContextMenu = useCallback<NodeMouseHandler>((event, node) => {
+    event.preventDefault();
+    setContextMenu({
+      target: { id: node.id, type: node.type, data: node.data as ContextMenuTarget["data"] },
+      x: event.clientX,
+      y: event.clientY,
+    });
+  }, []);
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
+
+  // Context-menu "đổi icon" / "đổi màu" → a set_attr op (null value removes it).
+  const handleSetAttr = useCallback(
+    (id: string, key: "icon" | "color", value: string | null) => {
+      if (!diagramName) return;
+      const verb = key === "icon" ? "icon" : "màu";
+      void postEdit(diagramName, [buildSetAttrOp(id, key, value)]).then((result) => {
+        if (result.ok) {
+          showEditToast(value === null ? `Đã bỏ ${verb} của "${id}"` : `Đã đổi ${verb} "${id}" → ${value}`);
+        } else {
+          showEditToast(`Không đổi ${verb} được: ${result.error ?? "lỗi không rõ"}`, true);
+        }
+      });
+    },
+    [diagramName, showEditToast],
+  );
+
+  // Context-menu delete. A node removes straight; a group is already confirmed
+  // inside the menu. `remove` cascades edges (and group members) server-side.
+  const handleContextDelete = useCallback(
+    (target: ContextMenuTarget) => {
+      if (!diagramName) return;
+      void postEdit(diagramName, [{ op: "remove", id: target.id }]).then((result) => {
+        if (result.ok) showEditToast(`Đã xóa "${target.id}" — Undo để hoàn tác`);
+        else showEditToast(`Không xóa được "${target.id}": ${result.error ?? "lỗi không rõ"}`, true);
+      });
+    },
+    [diagramName, showEditToast],
+  );
 
   // Double-click rename (ArchNode/ArchGroup labels) reaches the server through
   // this context — same write path as delete: rename op, WS broadcast back.
@@ -556,6 +627,10 @@ function DiagramCanvas() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeDragStop={(_, node) => handleNodeDragStop(node)}
+        // Right-click a node/group → context menu (DGC-20). Right-click on the
+        // empty pane just dismisses an open one (browser menu left untouched).
+        onNodeContextMenu={onNodeContextMenu}
+        onPaneContextMenu={closeContextMenu}
         // Handle-drag edge (DGC-18): a connection dropped on any node adds the
         // edge via /api/edit. Loose mode treats a node's two hidden handles as
         // interchangeable so a drag can start/end on either side — the user
@@ -573,6 +648,14 @@ function DiagramCanvas() {
         // would silently drop elements from local state; ours writes the DSL
         // via /api/edit and lets the broadcast re-render the truth.
         deleteKeyCode={null}
+        // Multi-select (DGC-20). Left-drag stays PAN (unchanged): React Flow
+        // force-disables `selectionOnDrag` while `panOnDrag` is true, so a
+        // marquee is drawn by holding Shift and dragging the pane
+        // (`selectionKeyCode`, RF's default). `multiSelectionKeyCode` adds
+        // Shift so Shift-CLICK also accumulates a selection (Cmd-click keeps
+        // working on mac too). Delete/⌘D then act on the whole selection.
+        selectionKeyCode="Shift"
+        multiSelectionKeyCode={["Meta", "Shift"]}
         // Double-click now means "rename" (node/group labels) — a canvas-level
         // dbl-click zoom firing next to it reads as a glitch.
         zoomOnDoubleClick={false}
@@ -603,6 +686,16 @@ function DiagramCanvas() {
         <div className={`edit-toast${editToast.error ? " edit-toast--error" : ""}`} role="status">
           {editToast.text}
         </div>
+      )}
+      {contextMenu && (
+        <ContextMenu
+          target={contextMenu.target}
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={closeContextMenu}
+          onSetAttr={handleSetAttr}
+          onDelete={handleContextDelete}
+        />
       )}
       <StatusPill status={status} />
       <StepsNav workspace={workspace} onDiffChange={setDiffOverlay} />
