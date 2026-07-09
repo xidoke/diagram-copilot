@@ -38,7 +38,11 @@
    pnpm dev
    ```
    Server mặc định lắng nghe `http://localhost:4747`, workspace mặc định `~/diagram-copilot/workspace`. Đổi bằng cờ CLI:
-   `--port <n>` · `--workspace <dir>` · `--export-dir <dir>`.
+   `--port <n>` · `--workspace <dir>` · `--export-dir <dir>` · `--export-root <dir>` (whitelist thêm cho `export_diagram`, lặp lại được).
+   Ngoài cờ, có thể khai báo thêm root qua biến môi trường `DIAGRAM_COPILOT_EXPORT_ROOTS` (nhiều path ngăn bằng `:`, hỗ trợ `~`) — CỘNG THÊM vào whitelist, không thay thế. Hữu ích khi chạy `pnpm dev` (không truyền được cờ CLI) và cần export PNG vào một repo code khác, ví dụ:
+   ```bash
+   DIAGRAM_COPILOT_EXPORT_ROOTS=~/cho-phien/docs/diagrams pnpm dev
+   ```
 4. Đăng ký MCP endpoint với Claude Code (một lần):
    ```bash
    claude mcp add --transport http diagram-copilot http://localhost:4747/mcp
@@ -66,7 +70,11 @@
    pnpm dev
    ```
    Defaults: `http://localhost:4747`, workspace `~/diagram-copilot/workspace`. Override with
-   `--port <n>` · `--workspace <dir>` · `--export-dir <dir>`.
+   `--port <n>` · `--workspace <dir>` · `--export-dir <dir>` · `--export-root <dir>` (extra whitelist root for `export_diagram`, repeatable).
+   Besides the flag, extra roots can be declared via the `DIAGRAM_COPILOT_EXPORT_ROOTS` env var (multiple paths joined with `:`, `~` supported) — ADDED to the whitelist, never replacing it. Handy with `pnpm dev` (no CLI flags to pass) when you need to export a PNG into a different code repo, e.g.:
+   ```bash
+   DIAGRAM_COPILOT_EXPORT_ROOTS=~/cho-phien/docs/diagrams pnpm dev
+   ```
 4. Register the MCP endpoint with Claude Code (once):
    ```bash
    claude mcp add --transport http diagram-copilot http://localhost:4747/mcp
