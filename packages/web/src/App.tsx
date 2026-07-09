@@ -1,14 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import {
   applyEdgeChanges,
   applyNodeChanges,
   Background,
   BackgroundVariant,
+  ConnectionMode,
   Controls,
   MiniMap,
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
+  type Connection,
   type Edge,
   type EdgeChange,
   type Node,
@@ -36,7 +38,16 @@ import { applyPrefs, loadLayoutPrefs, saveLayoutPrefs, type LayoutPrefs } from "
 import { setSnapshotProvider } from "./render/snapshotResponder.js";
 import { ArchGroup, ArchNode } from "./render/ArchNode.js";
 import { EditContext, type EditActions } from "./render/EditContext.js";
-import { buildRemoveOps, describeRemoval, postEdit } from "./render/editRequests.js";
+import {
+  buildAddEdgeOp,
+  buildDropNodeOp,
+  buildRemoveOps,
+  describeRemoval,
+  groupAtPoint,
+  postEdit,
+  type GroupBox,
+} from "./render/editRequests.js";
+import { ICON_DND_MIME } from "./components/IconPalette.js";
 import { ELK_EDGE_TYPE, ElkEdge, ElkEdgeMarkerDefs } from "./render/ElkEdge.js";
 import { ARCH_GROUP_TYPE, ARCH_NODE_TYPE, toFlow } from "./render/toFlow.js";
 import { applyOverrides, deleteOverrides, fetchOverrides, markDirtyEdges, putOverrides } from "./render/overrides.js";
@@ -241,6 +252,98 @@ function DiagramCanvas() {
     };
   }, [diagramName, showEditToast]);
 
+  // ── Add gestures (DGC-18): palette drop → add_node, handle-drag → add_edge ──
+  // Alt (Option on macOS) held while releasing a handle-drag connection opens a
+  // label prompt for the new edge. Tracked in a ref because React Flow's
+  // `onConnect` hands us the connection, not the originating event's modifiers.
+  const altPressedRef = useRef(false);
+  useEffect(() => {
+    const track = (e: KeyboardEvent) => {
+      altPressedRef.current = e.altKey;
+    };
+    const clear = () => {
+      altPressedRef.current = false;
+    };
+    window.addEventListener("keydown", track);
+    window.addEventListener("keyup", track);
+    window.addEventListener("blur", clear);
+    return () => {
+      window.removeEventListener("keydown", track);
+      window.removeEventListener("keyup", track);
+      window.removeEventListener("blur", clear);
+    };
+  }, []);
+
+  // Allow the icon drag (and only that) to drop on the canvas — preventDefault
+  // on dragover is what makes an element a valid HTML5 drop target.
+  const onDragOver = useCallback((event: DragEvent) => {
+    if (!event.dataTransfer.types.includes(ICON_DND_MIME)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  }, []);
+
+  // Drop an icon from the palette → add a node (named after the icon, that icon
+  // set on it), nested into whatever group the drop landed inside. No optimistic
+  // node: the write goes over /api/edit and the canvas refreshes off the
+  // broadcast; ELK decides the new node's position (position-at-drop is a
+  // deliberate v1 non-goal — see DGC-18).
+  const onDrop = useCallback(
+    (event: DragEvent) => {
+      const iconId = event.dataTransfer.getData(ICON_DND_MIME);
+      if (!iconId) return;
+      event.preventDefault();
+      if (!diagramName) return;
+      const nodes = flowRef.current.nodes;
+      // Hit-test the drop point against each group's on-screen box. Groups are
+      // pan surfaces (`pointer-events: none`) so they never show up in an
+      // `elementsFromPoint` stack — read their boxes from the DOM and let
+      // `groupAtPoint` pick the innermost one geometrically (undefined → root).
+      const boxes: GroupBox[] = [];
+      for (const n of nodes) {
+        if (n.type !== ARCH_GROUP_TYPE) continue;
+        const el = document.querySelector(`.react-flow__node[data-id="${CSS.escape(n.id)}"]`);
+        if (!el) continue;
+        const r = el.getBoundingClientRect();
+        boxes.push({ id: n.id, left: r.left, top: r.top, right: r.right, bottom: r.bottom });
+      }
+      const group = groupAtPoint(event.clientX, event.clientY, boxes);
+      const op = buildDropNodeOp(iconId, nodes.map((n) => n.id), group);
+      void postEdit(diagramName, [op]).then((result) => {
+        if (result.ok) showEditToast(`Đã thêm node "${op.name}"${group ? ` vào nhóm "${group}"` : ""}`);
+        else showEditToast(`Không thêm được node: ${result.error ?? "lỗi không rõ"}`, true);
+      });
+    },
+    [diagramName, showEditToast],
+  );
+
+  // Handle-drag from node A to node B → add the edge `A > B`. Hold Alt on drop
+  // to be prompted for a label (cancel = add nothing). Same write path as above.
+  const onConnect = useCallback(
+    (connection: Connection) => {
+      if (!diagramName) return;
+      const { source, target } = connection;
+      if (!source || !target) return;
+      let op: ReturnType<typeof buildAddEdgeOp>;
+      if (altPressedRef.current) {
+        const input = window.prompt(`Nhãn cho cạnh "${source}" → "${target}" (bỏ trống nếu không cần):`, "");
+        if (input === null) return; // cancelled → add nothing
+        op = buildAddEdgeOp(source, target, input);
+      } else {
+        op = buildAddEdgeOp(source, target);
+      }
+      if (!op) return;
+      const edgeOp = op;
+      void postEdit(diagramName, [edgeOp]).then((result) => {
+        if (result.ok) {
+          showEditToast(`Đã thêm cạnh ${edgeOp.from} > ${edgeOp.to}${edgeOp.label ? `: ${edgeOp.label}` : ""}`);
+        } else {
+          showEditToast(`Không thêm được cạnh: ${result.error ?? "lỗi không rõ"}`, true);
+        }
+      });
+    },
+    [diagramName, showEditToast],
+  );
+
   const scheduleSave = useCallback((name: string, next: LayoutOverrides) => {
     if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current);
     saveTimerRef.current = window.setTimeout(() => {
@@ -355,6 +458,15 @@ function DiagramCanvas() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeDragStop={(_, node) => handleNodeDragStop(node)}
+        // Handle-drag edge (DGC-18): a connection dropped on any node adds the
+        // edge via /api/edit. Loose mode treats a node's two hidden handles as
+        // interchangeable so a drag can start/end on either side — the user
+        // just drags node→node without aiming at the exact source/target dot.
+        onConnect={onConnect}
+        connectionMode={ConnectionMode.Loose}
+        // Palette icon drop (DGC-18): drop zone for the icon drag.
+        onDrop={onDrop}
+        onDragOver={onDragOver}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         proOptions={{ hideAttribution: true }}

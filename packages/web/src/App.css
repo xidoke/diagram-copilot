@@ -464,6 +464,16 @@ body {
 }
 .arch-handle {
   opacity: 0;
+  transition: opacity 120ms ease;
+}
+/* Reveal the connection handles on node hover (DGC-18): they sit invisible on
+   an idle canvas, but a user must SEE them to discover the handle-drag edge
+   gesture. A themed accent dot on hover; still fully interactive at opacity 0
+   during an in-progress connection so the drop target stays easy to hit. */
+.react-flow__node:hover .arch-handle {
+  opacity: 1;
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 /* Selected leaf (DGC-78): visual editing makes selection consequential (the

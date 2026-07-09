@@ -45,6 +45,14 @@ export interface IconEntry {
   fallback?: boolean;
 }
 
+/**
+ * DataTransfer MIME the palette stamps a dragged icon's id onto, and the canvas
+ * (`App.tsx`) reads back on drop to build an `add_node` op (DGC-18). A custom
+ * type (not `text/plain`) so only our canvas drop zone reacts, and unrelated
+ * text drags never look like an icon.
+ */
+export const ICON_DND_MIME = "application/x-diagram-icon";
+
 /** Any id the registry doesn't know resolves to the generic box; "fallback"
  *  gives that entry a self-describing id/title too. */
 const FALLBACK_ID = "fallback";
@@ -98,12 +106,12 @@ export function filterIcons(entries: IconEntry[], query: string): IconEntry[] {
   );
 }
 
-/** Tooltip text for a cell: full name, any aliases, and the click behavior. */
+/** Tooltip text for a cell: full name, any aliases, and the click/drag behavior. */
 function tooltipFor(entry: IconEntry): string {
   return [
     entry.title,
     entry.aliases.length ? `aliases: ${entry.aliases.join(", ")}` : null,
-    "click: insert vào editor (drawer mở) / copy",
+    "click: insert / copy · kéo thả vào canvas để tạo node",
   ]
     .filter(Boolean)
     .join(" · ");
@@ -235,6 +243,14 @@ export function IconPalette() {
                     className={`icon-palette__cell${entry.fallback ? " icon-palette__cell--fallback" : ""}`}
                     title={tooltipFor(entry)}
                     onClick={() => handleClick(entry)}
+                    // Drag the icon onto the canvas to add a node (DGC-18). The
+                    // click behavior (insert/copy) still works — a click isn't
+                    // a drag. Canvas reads ICON_DND_MIME on drop.
+                    draggable
+                    onDragStart={(event) => {
+                      event.dataTransfer.setData(ICON_DND_MIME, entry.id);
+                      event.dataTransfer.effectAllowed = "copy";
+                    }}
                   >
                     <span
                       className="icon-palette__glyph"
