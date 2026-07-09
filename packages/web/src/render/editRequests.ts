@@ -29,6 +29,8 @@ export interface RemovableEdge {
 
 /** Ops this client sends — mirrors the server's `EditOpSchema` variants it uses. */
 export type EditOp =
+  | { op: "add_node"; name: string; icon?: string; color?: string; label?: string; group?: string }
+  | { op: "add_edge"; from: string; to: string; label?: string }
   | { op: "remove"; id: string }
   | { op: "remove_edge"; from: string; to: string; label?: string }
   | { op: "rename"; id: string; new_name: string };
@@ -69,6 +71,97 @@ export function validateRename(currentName: string, raw: string): string | null 
   const next = raw.trim();
   if (next === "" || next === currentName) return null;
   return next;
+}
+
+// ── Palette drop → add_node, handle-drag → add_edge (DGC-18 v1.2) ──
+
+/**
+ * A name not already taken in `existing`. Tries `base` first, then suffixes
+ * `-2`, `-3`, … — matching how a user would number duplicates. The set holds
+ * BOTH node and group ids (they share one id namespace in the DSL), so a
+ * dropped node never collides with an existing group either. Best-effort only:
+ * the server's `add_node` is the real uniqueness guard (a stale client view
+ * just gets a 422 that routes into the same toast).
+ */
+export function uniqueName(base: string, existing: ReadonlySet<string>): string {
+  if (!existing.has(base)) return base;
+  for (let n = 2; ; n++) {
+    const candidate = `${base}-${n}`;
+    if (!existing.has(candidate)) return candidate;
+  }
+}
+
+/**
+ * Build the `add_node` op for an icon dragged from the palette onto the canvas.
+ * The new node's NAME is derived from the icon id (that's the label shown under
+ * each palette cell), de-duplicated against `existingIds`; the same icon id is
+ * stored as its `icon` attribute. `group` (the id of the group the drop landed
+ * inside, if any) nests the node; an empty/undefined group means document root.
+ */
+export function buildDropNodeOp(
+  iconId: string,
+  existingIds: Iterable<string>,
+  group?: string,
+): Extract<EditOp, { op: "add_node" }> {
+  const op: Extract<EditOp, { op: "add_node" }> = {
+    op: "add_node",
+    name: uniqueName(iconId, new Set(existingIds)),
+    icon: iconId,
+  };
+  if (group !== undefined && group !== "") op.group = group;
+  return op;
+}
+
+/** A group's on-screen box (client coords), used to hit-test a drop point. */
+export interface GroupBox {
+  id: string;
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+/**
+ * Which group a drop point falls inside — the INNERMOST one when groups nest,
+ * chosen by smallest area (a nested group is strictly smaller than its parent).
+ * `undefined` when the point misses every group (→ document root).
+ *
+ * Hit-testing against the groups' own boxes (not `elementsFromPoint`) is
+ * deliberate: React Flow renders a group node as a pan surface with
+ * `pointer-events: none`, so it never appears in an `elementsFromPoint` stack —
+ * geometry is the only reliable signal. Pure: the canvas passes in the boxes it
+ * reads from the DOM. Bounds are inclusive so a drop on a border still nests.
+ */
+export function groupAtPoint(x: number, y: number, groups: readonly GroupBox[]): string | undefined {
+  let bestId: string | undefined;
+  let bestArea = Infinity;
+  for (const g of groups) {
+    if (x < g.left || x > g.right || y < g.top || y > g.bottom) continue;
+    const area = Math.max(0, g.right - g.left) * Math.max(0, g.bottom - g.top);
+    if (area < bestArea) {
+      bestArea = area;
+      bestId = g.id;
+    }
+  }
+  return bestId;
+}
+
+/**
+ * Build the `add_edge` op for a handle-drag connection from node `from` to node
+ * `to`. `label` (from the Alt-modifier prompt) is trimmed and attached only
+ * when non-empty. Returns `null` for a degenerate connection (missing endpoint)
+ * so the caller sends nothing.
+ */
+export function buildAddEdgeOp(
+  from: string,
+  to: string,
+  label?: string | null,
+): Extract<EditOp, { op: "add_edge" }> | null {
+  if (!from || !to) return null;
+  const op: Extract<EditOp, { op: "add_edge" }> = { op: "add_edge", from, to };
+  const trimmed = label?.trim();
+  if (trimmed) op.label = trimmed;
+  return op;
 }
 
 /** JSON receipt shape `POST /api/edit` answers with (see server `edit-executor.ts`). */
