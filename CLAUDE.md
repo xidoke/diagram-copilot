@@ -1,6 +1,6 @@
 # CLAUDE.md — diagram-copilot
 
-Đọc theo thứ tự khi mở phiên: file này → `docs/WORKFLOW.md` (mô hình Master + worker song song, format task, model tiering) → `docs/ROADMAP.md` (release hiện tại) → 10 dòng đầu `CHANGELOG.md` (vừa ship gì). Kiến trúc + dev setup: `README.md`.
+Đọc theo thứ tự khi mở phiên: file này → `docs/WORKFLOW.md` (mô hình Master + worker song song, format task, model tiering) → `docs/PO-PLAYBOOK.md` (Claude là PO — quy trình tự quyết product, Đô là user) → `docs/ROADMAP.md` (release hiện tại) → 10 dòng đầu `CHANGELOG.md` (vừa ship gì). Kiến trúc + dev setup: `README.md`.
 
 ## Lệnh chuẩn
 
