@@ -65,6 +65,32 @@ describe("applyOverrides", () => {
     const out = applyOverrides(nodes, {});
     expect(out.map((n) => n.position)).toEqual(nodes.map((n) => n.position));
   });
+
+  it("applies a group SIZE override to width/height + style (DGC-19 resize)", () => {
+    const out = applyOverrides(fixtureNodes(), { VPC: { x: 1, y: 1, width: 260, height: 180 } });
+    const vpc = out.find((n) => n.id === "VPC");
+    expect(vpc?.position).toEqual({ x: 1, y: 1 });
+    expect(vpc?.width).toBe(260);
+    expect(vpc?.height).toBe(180);
+    expect(vpc?.style).toMatchObject({ width: 260, height: 180 });
+    expect(vpc?.className).toContain(PINNED_CLASS);
+  });
+
+  it("leaves width/height untouched for a position-only override", () => {
+    const out = applyOverrides(fixtureNodes(), { VPC: { x: 5, y: 6 } });
+    const vpc = out.find((n) => n.id === "VPC");
+    expect(vpc?.width).toBeUndefined();
+    expect(vpc?.height).toBeUndefined();
+    expect(vpc?.position).toEqual({ x: 5, y: 6 });
+  });
+
+  it("keeps existing style keys when merging a size override", () => {
+    const nodes: Node[] = [
+      { id: "G", type: ARCH_GROUP_TYPE, position: { x: 0, y: 0 }, style: { width: 100, height: 100, opacity: 0.5 }, data: {} },
+    ];
+    const out = applyOverrides(nodes, { G: { x: 0, y: 0, width: 120, height: 90 } });
+    expect(out[0].style).toMatchObject({ width: 120, height: 90, opacity: 0.5 });
+  });
 });
 
 /** Minimal elk edges mirroring what `toFlow` produces (no dirty flag yet). */

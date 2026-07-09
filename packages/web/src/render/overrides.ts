@@ -15,6 +15,24 @@
 import type { Edge, Node } from "@xyflow/react";
 import type { LayoutOverrides } from "@diagram-copilot/core";
 
+/**
+ * Web-side override value. The core sidecar schema ({@link LayoutOverrides})
+ * stores only `{ x, y }`; DGC-19 group resize adds an OPTIONAL `{ width,
+ * height }`. `SizedOverrides` is a strict superset (every `LayoutOverrides`
+ * is a valid `SizedOverrides`), so it slots into the same fetch/apply/PUT
+ * plumbing. NOTE: the server's Zod schema strips the extra keys on PUT, so a
+ * size override survives a re-layout WITHIN a session (it lives in the client
+ * override map) but not across a reload until the core schema gains the two
+ * optional fields — see the DGC-19 report / server `LayoutPositionSchema`.
+ */
+export interface SizedPosition {
+  x: number;
+  y: number;
+  width?: number;
+  height?: number;
+}
+export type SizedOverrides = Record<string, SizedPosition>;
+
 /** CSS class marking a node pinned to a manual position (see `App.css`). */
 export const PINNED_CLASS = "arch-node--pinned";
 
@@ -53,7 +71,7 @@ export async function fetchOverrides(name: string, signal?: AbortSignal): Promis
 }
 
 /** Persist the full overrides record for `name`. */
-export async function putOverrides(name: string, overrides: LayoutOverrides): Promise<void> {
+export async function putOverrides(name: string, overrides: SizedOverrides): Promise<void> {
   const res = await fetch(layoutUrl(name), {
     method: "PUT",
     headers: { "content-type": "application/json" },
@@ -76,14 +94,24 @@ export async function deleteOverrides(name: string): Promise<void> {
  * for free because their positions are parent-relative). Override ids with no
  * matching node are ignored. Does not mutate the input.
  */
-export function applyOverrides(nodes: Node[], overrides: LayoutOverrides): Node[] {
+export function applyOverrides(nodes: Node[], overrides: SizedOverrides): Node[] {
   return nodes.map((node) => {
-    const position = overrides[node.id];
-    if (!position) return node;
+    const override = overrides[node.id];
+    if (!override) return node;
     const className = node.className
       ? `${node.className} ${PINNED_CLASS}`
       : PINNED_CLASS;
-    return { ...node, position: { x: position.x, y: position.y }, className };
+    const next: Node = { ...node, position: { x: override.x, y: override.y }, className };
+    // A group SIZE override (DGC-19) is applied to both `width`/`height` (which
+    // React Flow's node wrapper prefers over `style.width`) and `style` (how
+    // `toFlow` sizes a group in the first place), so the resized size holds
+    // whichever path measures it. Position-only overrides leave size untouched.
+    if (override.width !== undefined && override.height !== undefined) {
+      next.width = override.width;
+      next.height = override.height;
+      next.style = { ...node.style, width: override.width, height: override.height };
+    }
+    return next;
   });
 }
 

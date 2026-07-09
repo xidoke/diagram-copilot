@@ -1,5 +1,5 @@
 import { useState, type CSSProperties } from "react";
-import { Handle, Position, type NodeProps } from "@xyflow/react";
+import { Handle, NodeResizer, Position, type NodeProps } from "@xyflow/react";
 import { getIcon } from "@diagram-copilot/icons";
 import { resolveColor } from "./colors.js";
 import { useEditActions } from "./EditContext.js";
@@ -121,8 +121,12 @@ export function ArchNode({ id, data }: NodeProps) {
 /** Deepest nesting level that gets its own tint; deeper groups reuse it. */
 const MAX_DEPTH_TINT = 3;
 
+/** Smallest a group may be dragged (DGC-19 resize) — room for the title band. */
+export const GROUP_MIN_WIDTH = 120;
+export const GROUP_MIN_HEIGHT = 64;
+
 /** Group container — dashed outline with an uppercase corner label, subtly accented when colored. */
-export function ArchGroup({ id, data }: NodeProps) {
+export function ArchGroup({ id, data, selected }: NodeProps) {
   const { label, direction, icon, color, depth } = data as ArchNodeData;
   const pos = HANDLE_POSITIONS[direction] ?? HANDLE_POSITIONS.right;
   const accent = resolveColor(color);
@@ -138,6 +142,18 @@ export function ArchGroup({ id, data }: NodeProps) {
 
   return (
     <div className={className} style={style}>
+      {/* Manual resize (DGC-19): handles show only while the group is selected.
+          The size is dispatched through React Flow's node changes and persisted
+          as a layout override in `App` (onNodesChange → PUT /api/layout). The
+          wrapper is `pointer-events:none`, so `.arch-group__resize-*` opt the
+          controls back in via CSS. */}
+      <NodeResizer
+        isVisible={selected === true}
+        minWidth={GROUP_MIN_WIDTH}
+        minHeight={GROUP_MIN_HEIGHT}
+        handleClassName="arch-group__resize-handle"
+        lineClassName="arch-group__resize-line"
+      />
       {/* Hidden handles so edges may terminate on the group itself
           (`API > VPC`). Positioned by flow direction, like ArchNode. */}
       <Handle type="target" position={pos.target} className="arch-handle" />

@@ -6,8 +6,6 @@ import {
   ARCH_GROUP_DRAG_HANDLE,
   ARCH_GROUP_TYPE,
   ARCH_NODE_TYPE,
-  GROUP_EXTENT_PADDING,
-  GROUP_TITLE_BAND,
   HANDLE_RIM_OFFSET,
   toFlow,
 } from "../../src/render/toFlow.js";
@@ -43,17 +41,14 @@ const graph: PositionedGraph = {
 };
 
 describe("toFlow", () => {
-  it("emits groups before leaves, with parentId/extent for children", () => {
+  it("emits groups before leaves, with parentId but no extent clamp (DGC-19 drag-out)", () => {
     const { nodes } = toFlow(doc, graph);
     expect(nodes.map((n) => n.type)).toEqual([ARCH_GROUP_TYPE, ARCH_NODE_TYPE, ARCH_NODE_TYPE]);
     const api = nodes.find((n) => n.id === "API");
     expect(api?.parentId).toBe("VPC");
-    // Padded drag clamp (DGC-69): parent-relative, VPC is 180×120 — the top
-    // inset is the title band, the other sides the plain border padding.
-    expect(api?.extent).toEqual([
-      [GROUP_EXTENT_PADDING, GROUP_TITLE_BAND],
-      [180 - GROUP_EXTENT_PADDING, 120 - GROUP_EXTENT_PADDING],
-    ]);
+    // No `extent` (DGC-19): the old DGC-69 parent clamp would trap a child in
+    // its group; dragging a node OUT of a group needs it to roam freely.
+    expect(api?.extent).toBeUndefined();
     const client = nodes.find((n) => n.id === "Client");
     expect(client?.parentId).toBeUndefined();
     expect(client?.extent).toBeUndefined();
@@ -100,12 +95,13 @@ describe("toFlow", () => {
     expect(vpc?.data.depth).toBe(0);
   });
 
-  it("makes a group draggable by its title band, still non-selectable (DGC-71)", () => {
+  it("makes a group draggable by its title band and selectable for resize (DGC-19)", () => {
     const { nodes } = toFlow(doc, graph);
     const vpc = nodes.find((n) => n.id === "VPC");
     expect(vpc?.draggable).toBe(true);
     expect(vpc?.dragHandle).toBe(ARCH_GROUP_DRAG_HANDLE);
-    expect(vpc?.selectable).toBe(false);
+    // Selectable now (DGC-19): a selected group shows its NodeResizer handles.
+    expect(vpc?.selectable).toBe(true);
     // A root group roams free (no extent clamp).
     expect(vpc?.extent).toBeUndefined();
   });
@@ -144,35 +140,23 @@ describe("toFlow — nested group depth", () => {
     expect(depthOf("Inner")).toBe(2);
   });
 
-  it("clamps a nested leaf to its immediate parent's padded box", () => {
+  it("keeps a nested leaf parented but un-clamped so it can be dragged out (DGC-19)", () => {
     const { nodes } = toFlow(nestedDoc, nestedGraph);
     const db = nodes.find((n) => n.id === "DB");
-    // Inner is 180×100 — the extent is relative to Inner, not to the root.
-    expect(db?.extent).toEqual([
-      [GROUP_EXTENT_PADDING, GROUP_TITLE_BAND],
-      [180 - GROUP_EXTENT_PADDING, 100 - GROUP_EXTENT_PADDING],
-    ]);
+    expect(db?.parentId).toBe("Inner");
+    expect(db?.extent).toBeUndefined();
   });
 
-  it("clamps a nested GROUP to its parent's padded/title-band box (DGC-71)", () => {
+  it("keeps a nested GROUP parented, draggable and un-clamped (DGC-19)", () => {
     const { nodes } = toFlow(nestedDoc, nestedGraph);
-    // Mid inside Outer (300×220): same title-band clamp as a leaf, relative to
-    // Outer — so a dragged inner group can't cover the parent's border/title.
     const mid = nodes.find((n) => n.id === "Mid");
     expect(mid?.parentId).toBe("Outer");
     expect(mid?.draggable).toBe(true);
     expect(mid?.dragHandle).toBe(ARCH_GROUP_DRAG_HANDLE);
-    expect(mid?.extent).toEqual([
-      [GROUP_EXTENT_PADDING, GROUP_TITLE_BAND],
-      [300 - GROUP_EXTENT_PADDING, 220 - GROUP_EXTENT_PADDING],
-    ]);
-    // Inner inside Mid (240×160).
+    expect(mid?.extent).toBeUndefined();
     const inner = nodes.find((n) => n.id === "Inner");
-    expect(inner?.extent).toEqual([
-      [GROUP_EXTENT_PADDING, GROUP_TITLE_BAND],
-      [240 - GROUP_EXTENT_PADDING, 160 - GROUP_EXTENT_PADDING],
-    ]);
-    // Root group (Outer) roams free.
+    expect(inner?.parentId).toBe("Mid");
+    expect(inner?.extent).toBeUndefined();
     expect(nodes.find((n) => n.id === "Outer")?.extent).toBeUndefined();
   });
 });

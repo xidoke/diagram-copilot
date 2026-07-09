@@ -569,6 +569,30 @@ body {
 .react-flow__node-archGroup {
   pointer-events: none !important;
 }
+/* Selected group (DGC-19): a solid accent outline replaces the dashed border so
+   it's clear which group the resize handles belong to. */
+.react-flow__node-archGroup.selected .arch-group {
+  border-style: solid;
+  border-color: var(--accent);
+}
+/* Resize controls (DGC-19): NodeResizer renders its handles/lines as children
+   of the group wrapper, which is `pointer-events:none` — opt them back in so
+   they're grabbable, and theme them to the accent. Only visible while selected
+   (NodeResizer `isVisible`). */
+.arch-group__resize-handle,
+.arch-group__resize-line {
+  pointer-events: all;
+}
+.arch-group__resize-handle {
+  background: var(--accent);
+  border: 1px solid var(--panel, #0b0f16);
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+.arch-group__resize-line {
+  border-color: var(--accent);
+}
 
 /* Title band = the group's drag handle (DGC-71). Spans the top of the group;
    grabbing it drags the whole group + descendants, while the body stays a

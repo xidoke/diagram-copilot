@@ -11,11 +11,14 @@
  * separated from the fetch wrapper so they can be unit-tested without a DOM.
  */
 import { resolveApiBase } from "../components/UndoButton.js";
+import { ARCH_GROUP_TYPE } from "./toFlow.js";
 
 /** The subset of a React Flow node the remove builder needs. */
 export interface RemovableNode {
   id: string;
   selected?: boolean;
+  /** React Flow node type — used to skip groups (see {@link buildRemoveOps}). */
+  type?: string;
 }
 
 /** The subset of a React Flow edge the remove builder needs. */
@@ -33,7 +36,8 @@ export type EditOp =
   | { op: "add_edge"; from: string; to: string; label?: string }
   | { op: "remove"; id: string }
   | { op: "remove_edge"; from: string; to: string; label?: string }
-  | { op: "rename"; id: string; new_name: string };
+  | { op: "rename"; id: string; new_name: string }
+  | { op: "move_to_group"; id: string; group: string | null };
 
 /**
  * Translate the current React Flow selection into remove ops:
@@ -44,7 +48,12 @@ export type EditOp =
  *   the whole all-or-nothing batch.
  */
 export function buildRemoveOps(nodes: readonly RemovableNode[], edges: readonly RemovableEdge[]): EditOp[] {
-  const removedNodes = new Set(nodes.filter((n) => n.selected === true).map((n) => n.id));
+  // Groups are selectable (DGC-19 resize) but must NOT be deletable from the
+  // canvas — a single Delete would cascade the whole group + members server
+  // side. Skip them here to keep the pre-DGC-19 "leaves/edges only" behavior.
+  const removedNodes = new Set(
+    nodes.filter((n) => n.selected === true && n.type !== ARCH_GROUP_TYPE).map((n) => n.id),
+  );
   const ops: EditOp[] = [...removedNodes].map((id) => ({ op: "remove", id }));
   for (const edge of edges) {
     if (edge.selected !== true) continue;
@@ -64,6 +73,11 @@ export function describeRemoval(ops: readonly EditOp[]): string {
     if (op.op === "remove_edge") return `cạnh ${op.from} > ${op.to}`;
   }
   return `${ops.length} phần tử`;
+}
+
+/** Toast line for a successful drag-to-re-nest (DGC-19): into a group, or out to root. */
+export function describeReparent(id: string, group: string | null): string {
+  return group === null ? `Đã đưa "${id}" ra ngoài nhóm` : `Đã chuyển "${id}" vào nhóm "${group}"`;
 }
 
 /** Outcome of {@link validateRename} — `null` means "nothing to do" (empty or unchanged). */
