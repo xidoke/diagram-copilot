@@ -5,6 +5,7 @@ Format theo [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning
 ## [Unreleased]
 
 ### Added
+- Visual editing v1.2: kéo node vào/ra group đổi nesting DSL thật (`move_to_group`, không nest vào subtree của chính nó); resize group bằng NodeResizer lưu layout override (bền trong session — bền qua reload chờ DGC-87); headless fallback tự retry khi client kết nối nhưng câm (zombie tab) (DGC-19, DGC-84).
 - Headless PNG export: `get_snapshot`/`export_diagram` tự fallback sang hidden system-Chrome canvas (puppeteer-core, lazy) khi không có web client — PNG byte-identical với canvas mở; browser reuse + idle reap 60s; Chrome discovery qua `DIAGRAM_COPILOT_CHROME`/paths phổ biến (DGC-82, dogfood Chợ Phiên).
 - Visual editing v1.2: kéo icon từ palette thả vào canvas → node mới (nest đúng group, tên de-dup); kéo handle node→node → edge mới, giữ Alt để nhập nhãn (DGC-18).
 - Env var `DIAGRAM_COPILOT_EXPORT_ROOTS` khai báo thêm export root (ngăn bằng `:`, hỗ trợ `~`, cộng thêm vào whitelist — không thay thế cờ/vault); README document `--export-root` + env var (DGC-81, dogfood Chợ Phiên).
