@@ -26,6 +26,7 @@ import { createDslApiHandler } from "./dsl-api.js";
 import { createTemplatesApiHandler } from "./templates.js";
 import { createMcpHandler, type McpInfo } from "./mcp/handler.js";
 import { createSnapshotBroker } from "./mcp/snapshot-broker.js";
+import { createHeadlessRenderer } from "./headless/renderer.js";
 import { createHistoryStore } from "./history/store.js";
 import { createUndoApiHandler } from "./history/http.js";
 import { buildWelcomeMessages, createWorkspaceWatcher, type WorkspaceWatcher } from "./workspace/watcher.js";
@@ -202,6 +203,18 @@ async function main(): Promise<void> {
   // snapshot-response route (resolve).
   const snapshotBroker = createSnapshotBroker();
 
+  // Headless render fallback (DGC-82): when get_snapshot / export_diagram
+  // find no connected canvas, this launches a hidden system-Chrome page at
+  // THIS server's own URL — it registers as a normal WS client and renders
+  // with the exact same canvas code, then is reaped after an idle period.
+  // `server` and `watcher` are referenced lazily (arrow bodies run at
+  // fallback time, long after both consts initialize).
+  const headless = createHeadlessRenderer({
+    url: () => `http://127.0.0.1:${server.port}`,
+    getActive: () => watcher?.getState().active ?? null,
+    log: (line) => console.log(`[server] headless: ${line}`),
+  });
+
   // Per-diagram markdown notes (DGC-63): one store bound to the workspace dir,
   // shared by the MCP tools (get_notes/set_notes) and the `/api/notes/:name`
   // HTTP handler below so both go through the same sanitize + 1 MB cap.
@@ -233,6 +246,8 @@ async function main(): Promise<void> {
         broadcast: (message) => server.broadcast(message),
         clientCount: () => server.clients.size,
         getActive: () => watcher?.getState().active ?? null,
+        // No client connected → launch the hidden canvas (DGC-82).
+        ensureClient: (target) => headless.ensureClient(target),
       },
       getHistory: () => history,
       // Notes read/write store for get_notes/set_notes (DGC-63).
@@ -272,8 +287,14 @@ async function main(): Promise<void> {
     // are dropped with a log.
     onClientUpdate: createClientUpdateHandler(() => watcher ?? null),
     // Canvas-rendered snapshot frames → the broker settles the pending
-    // get_snapshot call awaiting this correlation id (T24).
-    onSnapshotResponse: (message) => void snapshotBroker.resolve(message),
+    // get_snapshot call awaiting this correlation id (T24). Any snapshot
+    // traffic also keeps the hidden headless canvas alive: once it is
+    // connected the tools take the normal fast path (clientCount > 0) and
+    // never re-enter ensureClient, so this is where its idle clock resets.
+    onSnapshotResponse: (message) => {
+      headless.touch();
+      void snapshotBroker.resolve(message);
+    },
   });
 
   try {
@@ -302,7 +323,9 @@ async function main(): Promise<void> {
   );
 
   const shutdown = () => {
-    void Promise.all([watcher?.stop(), server.stop()]).then(() => process.exit(0));
+    void Promise.all([watcher?.stop(), headless.close(), server.stop()]).then(() =>
+      process.exit(0),
+    );
   };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);

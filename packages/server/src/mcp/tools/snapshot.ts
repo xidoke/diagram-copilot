@@ -40,6 +40,16 @@ export interface SnapshotOps {
   getActive: () => string | null;
   /** Response wait override — tests use a short one. Default 5s. */
   timeoutMs?: number;
+  /**
+   * Headless fallback (DGC-82): with NO client connected, ensure one exists —
+   * the CLI wires this to a hidden system-Chrome page pointed at the server's
+   * own web app, which registers as a normal WS client (see
+   * `headless/renderer.ts`). Resolves `ok` once that client is rendering
+   * `target`; `ok: false` carries the user-facing error (no Chrome installed,
+   * target not active, …). Omitted (tests, bare servers) → the old "open the
+   * canvas first" error.
+   */
+  ensureClient?: (target: string) => Promise<{ ok: true } | { ok: false; error: string }>;
 }
 
 /** Wrap a plain string into the MCP text-content result shape. */
@@ -83,7 +93,7 @@ export function registerSnapshotTool(server: McpServer, ops: SnapshotOps): void 
     {
       title: "Get diagram snapshot",
       description:
-        "See the diagram as a rendered PNG image — exactly what the user sees on the canvas. Defaults to the active diagram; pass `name` to capture a specific one. Requires an open web client: the browser tab rendering the diagram produces the image.",
+        "See the diagram as a rendered PNG image — exactly what the user sees on the canvas. Defaults to the active diagram; pass `name` to capture a specific one. An open web client renders the image when present; with none connected the server falls back to a hidden headless-Chrome canvas automatically.",
       inputSchema: {
         name: z
           .string()
@@ -99,9 +109,17 @@ export function registerSnapshotTool(server: McpServer, ops: SnapshotOps): void 
         );
       }
       if (ops.clientCount() === 0) {
-        return errorText(
-          `No web client is connected — the snapshot is rendered by the open canvas. Open ${CANVAS_URL} in a browser first, then call get_snapshot again.`,
-        );
+        // Headless fallback (DGC-82): spin up a hidden canvas instead of
+        // failing — callers must not have to care whether a tab is open.
+        const fallback = ops.ensureClient
+          ? await ops.ensureClient(target)
+          : {
+              ok: false as const,
+              error: `No web client is connected — the snapshot is rendered by the open canvas. Open ${CANVAS_URL} in a browser first, then call get_snapshot again.`,
+            };
+        if (!fallback.ok) {
+          return errorText(fallback.error);
+        }
       }
 
       const timeoutMs = ops.timeoutMs ?? SNAPSHOT_TIMEOUT_MS;

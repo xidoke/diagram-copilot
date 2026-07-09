@@ -135,7 +135,7 @@ export function registerExportDiagramTool(server: McpServer, ops: ExportOps): vo
     {
       title: "Export diagram to PNG file",
       description:
-        "Render the diagram to a PNG and SAVE it to disk, returning the absolute path (embed it in a note). Defaults to the active diagram and the server's export directory; pass `name` to pick a diagram and `path` (a directory or a *.png file, absolute or ~-relative) to choose where it lands. `path` must be inside an allowed export root. Requires an open web client — the browser canvas produces the image.",
+        "Render the diagram to a PNG and SAVE it to disk, returning the absolute path (embed it in a note). Defaults to the active diagram and the server's export directory; pass `name` to pick a diagram and `path` (a directory or a *.png file, absolute or ~-relative) to choose where it lands. `path` must be inside an allowed export root. An open web client renders the image when present; with none connected the server falls back to a hidden headless-Chrome canvas automatically.",
       inputSchema: {
         name: z
           .string()
@@ -180,9 +180,17 @@ export function registerExportDiagramTool(server: McpServer, ops: ExportOps): vo
       }
 
       if (ops.snapshot.clientCount() === 0) {
-        return errorText(
-          `No web client is connected — the PNG is rendered by the open canvas. Open ${CANVAS_URL} in a browser first, then call export_diagram again.`,
-        );
+        // Headless fallback (DGC-82): spin up a hidden canvas instead of
+        // failing — same contract as get_snapshot (see SnapshotOps.ensureClient).
+        const fallback = ops.snapshot.ensureClient
+          ? await ops.snapshot.ensureClient(target)
+          : {
+              ok: false as const,
+              error: `No web client is connected — the PNG is rendered by the open canvas. Open ${CANVAS_URL} in a browser first, then call export_diagram again.`,
+            };
+        if (!fallback.ok) {
+          return errorText(fallback.error);
+        }
       }
 
       const timeoutMs = ops.snapshot.timeoutMs ?? SNAPSHOT_TIMEOUT_MS;
