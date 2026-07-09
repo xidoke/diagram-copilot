@@ -16,7 +16,7 @@
  */
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { ServerMessage } from "@diagram-copilot/core";
+import type { ServerMessage, SnapshotResponseMessage } from "@diagram-copilot/core";
 import { SNAPSHOT_TIMEOUT_MS, type SnapshotBroker } from "../snapshot-broker.js";
 
 /** Expected prefix of the client-rendered data URL. */
@@ -83,6 +83,89 @@ export function pngDimensions(base64: string): { width: number; height: number }
   }
 }
 
+/** The classic "no canvas answered" broker-timeout error (unchanged wording). */
+function brokerTimeoutError(target: string, timeoutMs: number): string {
+  return (
+    `No canvas answered for "${target}" within ${timeoutMs}ms. Make sure a browser tab at ` +
+    `${CANVAS_URL} is showing that diagram (use open_diagram to activate it), then try again.`
+  );
+}
+
+/** Timeout error after even the headless fallback stayed silent (DGC-84). */
+function headlessRetryTimeoutError(target: string, timeoutMs: number): string {
+  return (
+    `No canvas answered for "${target}" within ${timeoutMs}ms, even after falling back to a ` +
+    `hidden headless canvas. A connected browser tab may be unresponsive (a backgrounded or ` +
+    `throttled tab), or the diagram may be failing to render — check it with validate_dsl, or ` +
+    `close stale tabs at ${CANVAS_URL} and try again.`
+  );
+}
+
+/** Broadcast a FRESH snapshot-request for `target` and await the correlated response. */
+function broadcastAndAwait(
+  ops: SnapshotOps,
+  target: string,
+  timeoutMs: number,
+): Promise<SnapshotResponseMessage> {
+  // Register BEFORE broadcasting so a fast client can't respond into the void.
+  const { id, promise } = ops.broker.createRequest(timeoutMs);
+  ops.broadcast({ kind: "snapshot-request", id, name: target });
+  return promise;
+}
+
+/** A settled broker response, or a user-facing error string. */
+export type SnapshotOutcome =
+  | { ok: true; response: SnapshotResponseMessage }
+  | { ok: false; error: string };
+
+/**
+ * Ask an open canvas to render `target`, with a headless-fallback retry
+ * (DGC-84). Shared by `get_snapshot` and `export_diagram` so the retry lives in
+ * exactly one place.
+ *
+ * Flow: broadcast + await once. If the broker TIMES OUT — every connected
+ * client stayed silent (e.g. a throttled background tab that reconnected after
+ * a server restart) — and a headless `ensureClient` is wired, bring up the
+ * hidden canvas and try EXACTLY ONCE more with a FRESH request id. The broker
+ * correlates by id, so a late response to the timed-out request is dropped as
+ * unknown — the retry can only settle on the new response.
+ *
+ * A settled response is returned even when `response.ok` is false: the client
+ * DID answer (a capture failure is not a timeout), so there is nothing to
+ * retry — the caller surfaces that error itself. With no `ensureClient` wired,
+ * the old timeout error is returned verbatim (unchanged semantics).
+ */
+export async function requestSnapshotWithRetry(
+  ops: SnapshotOps,
+  target: string,
+  timeoutMs: number,
+): Promise<SnapshotOutcome> {
+  try {
+    return { ok: true, response: await broadcastAndAwait(ops, target, timeoutMs) };
+  } catch {
+    // Broker timeout — fall through to the headless retry.
+  }
+
+  if (!ops.ensureClient) {
+    return { ok: false, error: brokerTimeoutError(target, timeoutMs) };
+  }
+
+  // A client is connected yet nobody answered: it is unresponsive (a throttled
+  // zombie tab) or showing another diagram. Bring up the hidden canvas — which
+  // renders the ACTIVE diagram and only resolves once it has settled — and
+  // retry once through it.
+  const fallback = await ops.ensureClient(target);
+  if (!fallback.ok) {
+    return { ok: false, error: fallback.error };
+  }
+
+  try {
+    return { ok: true, response: await broadcastAndAwait(ops, target, timeoutMs) };
+  } catch {
+    return { ok: false, error: headlessRetryTimeoutError(target, timeoutMs) };
+  }
+}
+
 /**
  * Register `get_snapshot` on `server`. Called from the MCP handler only when
  * the server was wired with snapshot ops (a bare ping-only server omits it).
@@ -123,41 +206,35 @@ export function registerSnapshotTool(server: McpServer, ops: SnapshotOps): void 
       }
 
       const timeoutMs = ops.timeoutMs ?? SNAPSHOT_TIMEOUT_MS;
-      // Register BEFORE broadcasting so a fast client can't respond into the void.
-      const { id, promise } = ops.broker.createRequest(timeoutMs);
-      ops.broadcast({ kind: "snapshot-request", id, name: target });
-
-      try {
-        const response = await promise;
-        if (!response.ok) {
-          return errorText(
-            `The canvas could not capture "${target}": ${response.error ?? "unknown error"}`,
-          );
-        }
-        if (!response.dataUrl?.startsWith(PNG_DATA_URL_PREFIX)) {
-          return errorText(
-            `The canvas returned an unexpected payload for "${target}" (not a PNG data URL).`,
-          );
-        }
-        const base64 = response.dataUrl.slice(PNG_DATA_URL_PREFIX.length);
-        const dims = pngDimensions(base64);
-        const size = dims ? `, ${dims.width}×${dims.height}px` : "";
-        return {
-          content: [
-            { type: "image" as const, data: base64, mimeType: "image/png" as const },
-            {
-              type: "text" as const,
-              text: `Snapshot of "${target}" as currently rendered on the canvas (PNG${size}).`,
-            },
-          ],
-        };
-      } catch {
-        // Broker timeout — either no client is showing `target` (clients
-        // rendering another diagram stay silent by design) or the capture hung.
+      // Broadcast + await, retrying once via the headless fallback if every
+      // connected client stayed silent past the timeout (DGC-84).
+      const outcome = await requestSnapshotWithRetry(ops, target, timeoutMs);
+      if (!outcome.ok) {
+        return errorText(outcome.error);
+      }
+      const { response } = outcome;
+      if (!response.ok) {
         return errorText(
-          `No canvas answered for "${target}" within ${timeoutMs}ms. Make sure a browser tab at ${CANVAS_URL} is showing that diagram (use open_diagram to activate it), then try again.`,
+          `The canvas could not capture "${target}": ${response.error ?? "unknown error"}`,
         );
       }
+      if (!response.dataUrl?.startsWith(PNG_DATA_URL_PREFIX)) {
+        return errorText(
+          `The canvas returned an unexpected payload for "${target}" (not a PNG data URL).`,
+        );
+      }
+      const base64 = response.dataUrl.slice(PNG_DATA_URL_PREFIX.length);
+      const dims = pngDimensions(base64);
+      const size = dims ? `, ${dims.width}×${dims.height}px` : "";
+      return {
+        content: [
+          { type: "image" as const, data: base64, mimeType: "image/png" as const },
+          {
+            type: "text" as const,
+            text: `Snapshot of "${target}" as currently rendered on the canvas (PNG${size}).`,
+          },
+        ],
+      };
     },
   );
 }

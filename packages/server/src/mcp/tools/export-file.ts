@@ -26,11 +26,10 @@ import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { ServerMessage } from "@diagram-copilot/core";
 import { SNAPSHOT_TIMEOUT_MS } from "../snapshot-broker.js";
 import type { WorkspaceOps } from "../../workspace/watcher.js";
 import { decodeDataUrl, resolveExportPath } from "../../export/save.js";
-import { pngDimensions, type SnapshotOps } from "./snapshot.js";
+import { pngDimensions, requestSnapshotWithRetry, type SnapshotOps } from "./snapshot.js";
 
 /** Expected prefix of the client-rendered data URL (same as `get_snapshot`). */
 const PNG_DATA_URL_PREFIX = "data:image/png;base64,";
@@ -194,19 +193,14 @@ export function registerExportDiagramTool(server: McpServer, ops: ExportOps): vo
       }
 
       const timeoutMs = ops.snapshot.timeoutMs ?? SNAPSHOT_TIMEOUT_MS;
-      // Register BEFORE broadcasting so a fast client can't respond into the void.
-      const { id, promise } = ops.snapshot.broker.createRequest(timeoutMs);
-      const request: ServerMessage = { kind: "snapshot-request", id, name: target };
-      ops.snapshot.broadcast(request);
-
-      let response;
-      try {
-        response = await promise;
-      } catch {
-        return errorText(
-          `No canvas answered for "${target}" within ${timeoutMs}ms. Make sure a browser tab at ${CANVAS_URL} is showing that diagram (use open_diagram to activate it), then try again.`,
-        );
+      // Broadcast + await, retrying once via the headless fallback if every
+      // connected client stayed silent past the timeout (DGC-84). Same contract
+      // as get_snapshot — the retry logic lives in requestSnapshotWithRetry.
+      const outcome = await requestSnapshotWithRetry(ops.snapshot, target, timeoutMs);
+      if (!outcome.ok) {
+        return errorText(outcome.error);
       }
+      const { response } = outcome;
       if (!response.ok) {
         return errorText(
           `The canvas could not capture "${target}": ${response.error ?? "unknown error"}`,
