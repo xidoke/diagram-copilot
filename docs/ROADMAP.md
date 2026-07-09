@@ -145,12 +145,12 @@ Publish sơ đồ thành web page tĩnh share được · template/community gal
 | v0.4 Daily Driver | ✅ 2026-07-02 | tag `v0.4` — T32 dogfood Đô duyệt. Drawer, picker, export, drag (edges bám live), undo/redo, group drag |
 | v0.5 Learning Pack | ✅ 2026-07-02 | tag `v0.5` — steps nav, present mode ▶, notes ⌘I, diff_diagram, templates, perf 60-node=190ms |
 | v1.0 Prod-grade | ✅ 2026-07-02 | tag `v1.0` 🚀 — CI xanh, node dist standalone, README GIF, DSL.md, MIT (Đô duyệt), eval 10/10 first-try. npm publish = quyết định riêng của Đô |
-| v1.2 Visual Editing | 🔶 2026-07-10 | DGC-17/T-VE1/2/3/T-IPAL (đợt trước) + DGC-18/19 merged. Còn DGC-20 (bay), T-VE4/T-VE5 (Todo), T-VE6 (chờ Đô duyệt contract) |
+| v1.2 Visual Editing | 🟢 code-complete 2026-07-10 | DGC-17/T-VE1/2/3/T-IPAL + DGC-18/19/20/85/86 merged (~1490 test xanh). Còn: gate DGC-87 (contract resize-bền, chờ Đô) + 5 checkpoint UX bằng chuột thật |
 | v1.3 Copilot Hardening | 🔄 rolling | DGC-81/82/84 shipped 2026-07-10 (dogfood Chợ Phiên). Intake luôn mở |
 | v1.1 More Canvases | ⏸ parked | Chờ tín hiệu nhu cầu thật |
 
 ## 8. Horizon hiện tại (PO update 2026-07-10, phiên tự hành — vai PO chính thức theo docs/PO-PLAYBOOK.md)
 - **Hôm nay đã merge 6 task:** DGC-81 (export roots env var) · DGC-82 (headless PNG export, byte-identical) · DGC-18 (palette drop + edge draw) · DGC-83 (deflake watcher) · DGC-84 (zombie-client retry) · DGC-19 (drag vào/ra group + resize). Groom 11 item stale. PO-PLAYBOOK.md ra đời — Đô giao vai PO cho Claude, Đô là user.
-- **Đang bay:** DGC-20 (context menu + Cmd+D + multi-select, wave 3 — mảnh cuối cùng lớn của v1.2).
-- **Chờ Đô:** T-VE6/DGC-87 (2 dòng optional vào LayoutPositionSchema — resize bền qua reload) · checkpoint UX: kéo handle tạo edge bằng chuột thật (DGC-18) + thử drag vào/ra group (DGC-19).
-- **Kế tiếp theo playbook:** đóng v1.2 (T-VE4, T-VE5) → mở v2.0 Phase A (diff visual + F7 collapse) song song với v1.3 intake. Mermaid (v1.1) tiếp tục parked.
+- **Phiên kết thúc với 8 task merged** (4 wave): thêm DGC-20 (context menu/Cmd+D/marquee) + DGC-85/86 (edge label inline + drop-point) sau đợt đầu. v1.2 code-complete.
+- **Chờ Đô:** DGC-87 (2 dòng optional vào LayoutPositionSchema — resize bền qua reload) · 5 checkpoint UX bằng chuột thật: kéo handle tạo edge, Alt-drag nhập label, drag vào/ra group, Shift+drag marquee, double-click edge sửa label.
+- **Kế tiếp theo playbook:** Đô gật checkpoints → tuyên bố v1.2 xong → mở v2.0 Phase A (DGC-88 diff visual + F7 collapse) song song v1.3 intake. Mermaid (v1.1) tiếp tục parked.
