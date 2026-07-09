@@ -21,8 +21,11 @@ import type { Edge, Node } from "@xyflow/react";
 import { diffDocs, parseDsl, type DocDiff } from "@diagram-copilot/core";
 import { buildStepChain } from "../components/StepsNav.js";
 
-/** The two visual states an element can be flagged with. */
-export type DiffClass = "diff-added" | "diff-changed";
+/** The visual states an element can be flagged with. `diff-removed` never
+ *  appears on the live canvas (ghost nodes would perturb ELK) — it exists for
+ *  compare mode's LEFT pane (DGC-88), which renders the *previous* step where
+ *  the removed element still lives. */
+export type DiffClass = "diff-added" | "diff-changed" | "diff-removed";
 
 /** Compact counts + removed-element names for the StepsNav Δ panel. */
 export interface DiffSummary {
@@ -138,8 +141,9 @@ export function prevStepName(diagrams: string[], active: string | null | undefin
  *  :4747 in dev (see Picker/StepsNav's `/api/open`). */
 const API_DSL_URL = "/api/dsl";
 
-/** Fetch a diagram's raw `.arch` source, or `null` if it doesn't exist / fails. */
-async function fetchDsl(name: string, signal?: AbortSignal): Promise<string | null> {
+/** Fetch a diagram's raw `.arch` source, or `null` if it doesn't exist / fails.
+ *  Exported for compare mode (DGC-88), which fetches the same pair of steps. */
+export async function fetchDsl(name: string, signal?: AbortSignal): Promise<string | null> {
   try {
     const res = await fetch(`${API_DSL_URL}/${encodeURIComponent(name)}`, { signal });
     if (!res.ok) return null;

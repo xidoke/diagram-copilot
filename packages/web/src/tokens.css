@@ -101,6 +101,11 @@
   --diff-changed: #e0a53a;
   --diff-changed-glow: 0 0 0 1.5px var(--diff-changed), 0 0 12px rgba(224, 165, 58, 0.35);
   --diff-changed-stroke: #e0a53a;
+  /* Removed (compare mode's left pane, DGC-88) — shares the disconnected-status
+     red so "gone" reads with the same alarm hue as "offline". */
+  --diff-removed: #e5484d;
+  --diff-removed-glow: 0 0 0 1.5px var(--diff-removed), 0 0 14px rgba(229, 72, 77, 0.38);
+  --diff-removed-stroke: #e5484d;
 }
 
 [data-theme="light"] {
@@ -164,4 +169,7 @@
   --diff-changed: #b9791b;
   --diff-changed-glow: 0 0 0 1.5px var(--diff-changed), 0 0 10px rgba(185, 121, 27, 0.25);
   --diff-changed-stroke: #b9791b;
+  --diff-removed: #d43a3a;
+  --diff-removed-glow: 0 0 0 1.5px var(--diff-removed), 0 0 10px rgba(212, 58, 58, 0.25);
+  --diff-removed-stroke: #d43a3a;
 }

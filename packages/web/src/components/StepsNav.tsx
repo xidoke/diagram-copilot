@@ -21,6 +21,11 @@ import type { WorkspaceMessage } from "@diagram-copilot/core";
 import { groupDiagrams } from "./Picker.js";
 import { isEditableTarget } from "./UndoButton.js";
 import { computeDiffOverlay, type DiffOverlay, type DiffSummary } from "../render/diffOverlay.js";
+import { computeCompare, type CompareData } from "../render/compareMode.js";
+
+/** The mutually-exclusive change-visualisation modes the nav can be in:
+ *  Δ overlay on the live canvas (DGC-79) or the split compare view (DGC-88). */
+export type ChangeViewMode = "off" | "diff" | "compare";
 
 /** An ordered evolution chain (`[base, step1, step2, …]`) and the active
  *  diagram's position within it. */
@@ -83,11 +88,20 @@ export interface StepsNavProps {
    * the React Flow nodes/edges — see App.tsx's derive effect (DGC-79).
    */
   onDiffChange?: (overlay: DiffOverlay | null) => void;
+  /**
+   * Called with the computed compare payload when ⧉ (side-by-side compare,
+   * DGC-88) is toggled on — and `null` when off or when there's no previous
+   * step. The parent splits the canvas: it renders the previous step in a
+   * static left pane and applies `right` to the live canvas.
+   */
+  onCompareChange?: (data: CompareData | null) => void;
 }
 
-export function StepsNav({ workspace, onDiffChange }: StepsNavProps) {
+export function StepsNav({ workspace, onDiffChange, onCompareChange }: StepsNavProps) {
   const [busy, setBusy] = useState(false);
-  const [showDiff, setShowDiff] = useState(false);
+  // Δ and ⧉ are mutually exclusive views over the same prev/current diff, so
+  // one mode field rather than two booleans that could both be true.
+  const [mode, setMode] = useState<ChangeViewMode>("off");
   const [overlay, setOverlay] = useState<DiffOverlay | null>(null);
   const diagrams = workspace?.diagrams ?? [];
   const active = workspace?.active ?? null;
@@ -101,8 +115,8 @@ export function StepsNav({ workspace, onDiffChange }: StepsNavProps) {
   // canvas). Disabled / no-prev-step clears it. Re-runs when the active diagram
   // moves through the chain so the overlay always reflects the visible step.
   useEffect(() => {
-    if (!showDiff || !prevName || !active) {
-      setOverlay(null);
+    if (mode !== "diff" || !prevName || !active) {
+      if (mode !== "compare") setOverlay(null);
       onDiffChange?.(null);
       return;
     }
@@ -125,7 +139,48 @@ export function StepsNav({ workspace, onDiffChange }: StepsNavProps) {
     // `active` already capture — so they, not the fresh-each-render array, are
     // the deps. (Same derived-value pattern as the keydown effect below.)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showDiff, prevName, active, onDiffChange]);
+  }, [mode, prevName, active, onDiffChange]);
+
+  // ⧉ compare (DGC-88): same fetch/diff cadence as the Δ effect above, but the
+  // result fans out to BOTH panes — the payload goes up to App (which renders
+  // the split view), and the shared summary feeds the same Δ panel here.
+  useEffect(() => {
+    if (mode !== "compare" || !prevName || !active) {
+      onCompareChange?.(null);
+      return;
+    }
+    const controller = new AbortController();
+    let cancelled = false;
+    computeCompare(diagrams, active, controller.signal)
+      .then((next) => {
+        if (cancelled) return;
+        setOverlay(next ? next.right : null);
+        onCompareChange?.(next);
+      })
+      .catch((err) => {
+        if ((err as Error).name !== "AbortError") console.warn("[steps-nav] compare failed:", err);
+      });
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+    // Same deps rationale as the Δ effect: prevName + active capture what
+    // `diagrams` is used for.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, prevName, active, onCompareChange]);
+
+  // Esc leaves compare mode (mirror of "toggle ⧉ again"). Only bound while
+  // comparing so Esc keeps its meaning for search/menus/present the rest of
+  // the time; text fields keep their native Esc via the editable guard.
+  useEffect(() => {
+    if (mode !== "compare") return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || isEditableTarget(event.target)) return;
+      setMode("off");
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [mode]);
 
   const goTo = useCallback(
     (target: string | undefined) => {
@@ -159,13 +214,14 @@ export function StepsNav({ workspace, onDiffChange }: StepsNavProps) {
 
   if (!stepChain) return null;
 
-  const parts = showDiff && overlay ? summaryParts(overlay.summary) : [];
+  const parts = mode !== "off" && overlay ? summaryParts(overlay.summary) : [];
 
   return (
     <>
       {/* Δ panel — what changed vs the previous step (DGC-79). Above the pill so
-          it clears the screen bottom; only while Δ is on and a prev step exists. */}
-      {showDiff && prevName && overlay && (
+          it clears the screen bottom; shown in BOTH change views (Δ and ⧉ share
+          one diff, so the counts describe either). */}
+      {mode !== "off" && prevName && overlay && (
         <div className="steps-diff" role="status" aria-label="Changes since previous step">
           {overlay.summary.empty ? (
             <span className="steps-diff__none">no changes vs previous step</span>
@@ -206,18 +262,31 @@ export function StepsNav({ workspace, onDiffChange }: StepsNavProps) {
         >
           ›
         </button>
-        {/* Δ diff toggle — only meaningful once there's a previous step. */}
+        {/* Δ overlay + ⧉ compare toggles — only meaningful once there's a
+            previous step. Mutually exclusive: switching one on retires the other. */}
         {prevName && (
-          <button
-            type="button"
-            className={`steps-nav__btn steps-nav__btn--diff${showDiff ? " steps-nav__btn--active" : ""}`}
-            aria-label="Toggle changes since previous step"
-            aria-pressed={showDiff}
-            title="Highlight what changed since the previous step"
-            onClick={() => setShowDiff((on) => !on)}
-          >
-            Δ
-          </button>
+          <>
+            <button
+              type="button"
+              className={`steps-nav__btn steps-nav__btn--diff${mode === "diff" ? " steps-nav__btn--active" : ""}`}
+              aria-label="Toggle changes since previous step"
+              aria-pressed={mode === "diff"}
+              title="Highlight what changed since the previous step"
+              onClick={() => setMode((m) => (m === "diff" ? "off" : "diff"))}
+            >
+              Δ
+            </button>
+            <button
+              type="button"
+              className={`steps-nav__btn steps-nav__btn--diff${mode === "compare" ? " steps-nav__btn--active" : ""}`}
+              aria-label="Toggle side-by-side compare with previous step"
+              aria-pressed={mode === "compare"}
+              title="So sánh cạnh nhau với bước trước (Esc để thoát)"
+              onClick={() => setMode((m) => (m === "compare" ? "off" : "compare"))}
+            >
+              ⧉
+            </button>
+          </>
         )}
       </div>
     </>

@@ -73,6 +73,8 @@ import {
   type NodeGeom,
 } from "./render/reparent.js";
 import { applyDiffToEdges, applyDiffToNodes, type DiffOverlay } from "./render/diffOverlay.js";
+import type { CompareData } from "./render/compareMode.js";
+import { ComparePane } from "./components/ComparePane.js";
 
 export const APP_TITLE = "diagram-copilot";
 
@@ -152,6 +154,14 @@ function DiagramCanvas() {
   // Δ diff overlay (DGC-79) — the class maps StepsNav computes when its Δ toggle
   // is on; `null` when off. Folded onto the derived flow below.
   const [diffOverlay, setDiffOverlay] = useState<DiffOverlay | null>(null);
+  // ⧉ compare mode (DGC-88) — the step pair StepsNav computes when its ⧉ toggle
+  // is on; `null` when off. Splits the canvas: previous step rendered static on
+  // the left (ComparePane), `right` classes folded onto the live flow below.
+  const [compare, setCompare] = useState<CompareData | null>(null);
+  // Scopes DOM queries (group-box hit tests) to the LIVE canvas — with the
+  // compare pane mounted, a document-wide `.react-flow__node` query could match
+  // the left pane's copy of the same node id first.
+  const canvasHostRef = useRef<HTMLDivElement | null>(null);
   // Right-click context menu (DGC-20) — `null` when closed. Carries the target
   // node/group plus the viewport point the menu anchors at.
   const [contextMenu, setContextMenu] = useState<{ target: ContextMenuTarget; x: number; y: number } | null>(null);
@@ -204,15 +214,18 @@ function DiagramCanvas() {
   // endpoint is overridden are flagged dirty so ElkEdge stops trusting the
   // stale ELK route and follows the live handles instead (DGC-69).
   useEffect(() => {
+    // Δ overlay classes (DGC-79) are layered on top of the override pass here,
+    // off the drag hot path (onNodesChange). In compare mode (DGC-88) the live
+    // canvas is the RIGHT pane, so the compare payload's `right` classes apply
+    // instead (StepsNav keeps the two modes mutually exclusive). `null` → no-op.
+    const overlay = compare ? compare.right : diffOverlay;
     setFlow({
-      // Δ overlay classes (DGC-79) are layered on top of the override pass here,
-      // off the drag hot path (onNodesChange). `null` overlay → no-op.
-      nodes: applyDiffToNodes(applyOverrides(base.nodes, overrides), diffOverlay),
+      nodes: applyDiffToNodes(applyOverrides(base.nodes, overrides), overlay),
       // Pass nodes so a dragged group also dirties edges touching its
       // descendants / crossing its boundary (DGC-71 ancestor case).
-      edges: applyDiffToEdges(markDirtyEdges(base.edges, overrides, base.nodes), diffOverlay),
+      edges: applyDiffToEdges(markDirtyEdges(base.edges, overrides, base.nodes), overlay),
     });
-  }, [base, overrides, diffOverlay]);
+  }, [base, overrides, diffOverlay, compare]);
 
   // Load the manual overrides for whichever diagram just became active. Cleared
   // first so diagram A's pins never briefly apply to diagram B.
@@ -501,9 +514,12 @@ function DiagramCanvas() {
       // `elementsFromPoint` stack — read their boxes from the DOM and let
       // `groupAtPoint` pick the innermost one geometrically (undefined → root).
       const boxes: GroupBox[] = [];
+      // Query inside the live canvas host only — the compare pane (DGC-88)
+      // renders the same node ids, and a document-wide query could hit those.
+      const host: ParentNode = canvasHostRef.current ?? document;
       for (const n of nodes) {
         if (n.type !== ARCH_GROUP_TYPE) continue;
-        const el = document.querySelector(`.react-flow__node[data-id="${CSS.escape(n.id)}"]`);
+        const el = host.querySelector(`.react-flow__node[data-id="${CSS.escape(n.id)}"]`);
         if (!el) continue;
         const r = el.getBoundingClientRect();
         boxes.push({ id: n.id, left: r.left, top: r.top, right: r.right, bottom: r.bottom });
@@ -721,6 +737,24 @@ function DiagramCanvas() {
     };
   }, [base, lastDiagram, fitView]);
 
+  // Entering/leaving compare mode resizes the live canvas host (100% ↔ 50%);
+  // React Flow observes the resize but keeps the old viewport, so re-fit after
+  // the flex split has painted — two rAFs (commit + paint), same recipe as the
+  // fitView effect above; one rAF still measures the pre-split width.
+  const comparing = compare !== null;
+  useEffect(() => {
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        fitView({ padding: 0.12, duration: 200 });
+      });
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [comparing, fitView]);
+
   // Keep rendering the last good state; show the banner only while the error
   // is current — a diagram-error carries the version of the last ACCEPTED dsl,
   // so a subsequent fix arrives with a strictly greater version (spec §8).
@@ -739,7 +773,7 @@ function DiagramCanvas() {
 
   return (
     <EditContext.Provider value={editActions}>
-    <div className={`app-shell${presentOn ? " presenting" : ""}`}>
+    <div className={`app-shell${presentOn ? " presenting" : ""}${comparing ? " comparing" : ""}`}>
       {lastDiagram && <Picker workspace={workspace} name={lastDiagram.name} version={lastDiagram.version} />}
       <Toolbar
         prefs={prefs}
@@ -756,8 +790,23 @@ function DiagramCanvas() {
             .join(" · ")}
         </div>
       )}
-      {/* Arrowhead marker defs — referenced by every elk edge via url(#…). */}
+      {/* Arrowhead marker defs — referenced by every elk edge via url(#…),
+          from BOTH panes: url() ids resolve document-wide, so the compare
+          pane's edges reuse these instead of duplicating the id. */}
       <ElkEdgeMarkerDefs />
+      {/* ⧉ compare mode (DGC-88): static previous step on the left; the live
+          canvas below becomes the right half via the `comparing` flex split.
+          Keyed by step name so sliding the pair (←/→) remounts + re-fits. */}
+      {compare && (
+        <ComparePane
+          key={compare.prevName}
+          name={compare.prevName}
+          doc={compare.prevDoc}
+          overlay={compare.left}
+          prefs={prefs}
+        />
+      )}
+      <div className="canvas-host" ref={canvasHostRef}>
       <ReactFlow
         nodes={flow.nodes}
         edges={flow.edges}
@@ -813,6 +862,7 @@ function DiagramCanvas() {
           />
         )}
       </ReactFlow>
+      </div>
       {workspace && shouldShowEmptyState(workspace, lastDiagram) && (
         <EmptyState workspace={workspace} send={send} />
       )}
@@ -848,7 +898,7 @@ function DiagramCanvas() {
         />
       )}
       <StatusPill status={status} />
-      <StepsNav workspace={workspace} onDiffChange={setDiffOverlay} />
+      <StepsNav workspace={workspace} onDiffChange={setDiffOverlay} onCompareChange={setCompare} />
       <UndoButton name={lastDiagram?.name ?? null} />
       <SearchBox nodes={searchNodes} />
       <Drawer open={drawerOpen} onToggle={toggleDrawer} diagram={lastDiagram} send={send} lastError={lastError} />
