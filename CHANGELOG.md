@@ -5,6 +5,9 @@ Format theo [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning
 ## [Unreleased]
 
 ### Added
+- Headless PNG export: `get_snapshot`/`export_diagram` tự fallback sang hidden system-Chrome canvas (puppeteer-core, lazy) khi không có web client — PNG byte-identical với canvas mở; browser reuse + idle reap 60s; Chrome discovery qua `DIAGRAM_COPILOT_CHROME`/paths phổ biến (DGC-82, dogfood Chợ Phiên).
+- Visual editing v1.2: kéo icon từ palette thả vào canvas → node mới (nest đúng group, tên de-dup); kéo handle node→node → edge mới, giữ Alt để nhập nhãn (DGC-18).
+- Env var `DIAGRAM_COPILOT_EXPORT_ROOTS` khai báo thêm export root (ngăn bằng `:`, hỗ trợ `~`, cộng thêm vào whitelist — không thay thế cờ/vault); README document `--export-root` + env var (DGC-81, dogfood Chợ Phiên).
 - Docs pack: README quickstart 5 phút (song ngữ), tài liệu DSL đầy đủ (`docs/DSL.md`), CHANGELOG, MIT license (DGC-14).
 
 ### Fixed
