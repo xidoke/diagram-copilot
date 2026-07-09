@@ -13,6 +13,7 @@ import {
   type Connection,
   type Edge,
   type EdgeChange,
+  type EdgeMouseHandler,
   type Node,
   type NodeChange,
   type NodeMouseHandler,
@@ -44,13 +45,16 @@ import {
   buildDuplicateOps,
   buildRemoveOps,
   buildSetAttrOp,
+  buildSetEdgeLabelOp,
   describeRemoval,
   describeReparent,
   groupAtPoint,
   postEdit,
   type GroupBox,
 } from "./render/editRequests.js";
+import { dropOverridePosition } from "./render/dropPlacement.js";
 import { ContextMenu, type ContextMenuTarget } from "./components/ContextMenu.js";
+import { InlineEdgeInput } from "./components/InlineEdgeInput.js";
 import { ICON_DND_MIME } from "./components/IconPalette.js";
 import { ELK_EDGE_TYPE, ElkEdge, ElkEdgeMarkerDefs } from "./render/ElkEdge.js";
 import { ARCH_GROUP_TYPE, ARCH_NODE_TYPE, toFlow } from "./render/toFlow.js";
@@ -90,6 +94,17 @@ const MINIMAP_MIN_NODES = 8;
 /** How long the visual-editing toast (delete/rename receipts, DGC-78) stays up. */
 const EDIT_TOAST_TIMEOUT_MS = 3000;
 
+/** How long a recorded palette drop (DGC-86) waits for its node to arrive on a
+ *  broadcast before it is discarded — avoids a leak when the add is rejected. */
+const DROP_PENDING_TTL_MS = 5000;
+
+/** Open inline edge-label editor (DGC-85): editing an existing edge's label, or
+ *  naming a not-yet-created edge from an Alt-drag connection. `x`/`y` are the
+ *  viewport point the input centers on. */
+type LabelEditorState =
+  | { kind: "edit"; edgeId: string; current: string; x: number; y: number }
+  | { kind: "new"; from: string; to: string; x: number; y: number };
+
 const nodeTypes = { [ARCH_NODE_TYPE]: ArchNode, [ARCH_GROUP_TYPE]: ArchGroup };
 const edgeTypes = { [ELK_EDGE_TYPE]: ElkEdge };
 
@@ -117,6 +132,10 @@ function DiagramCanvas() {
     setOverridesState(next);
   }, []);
   const saveTimerRef = useRef<number | null>(null);
+  // Palette drops (DGC-86) awaiting their node on a broadcast, keyed by the new
+  // node's name → the absolute-flow drop point + when it was recorded. When the
+  // node first appears we write its position override here, then drop the entry.
+  const pendingDropsRef = useRef<Map<string, { dropAbs: { x: number; y: number }; ts: number }>>(new Map());
   const [prefs, setPrefs] = useState<LayoutPrefs>(() => loadLayoutPrefs());
   const diagramName = lastDiagram?.name ?? null;
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -136,7 +155,10 @@ function DiagramCanvas() {
   // Right-click context menu (DGC-20) — `null` when closed. Carries the target
   // node/group plus the viewport point the menu anchors at.
   const [contextMenu, setContextMenu] = useState<{ target: ContextMenuTarget; x: number; y: number } | null>(null);
-  const { fitView, getNodes, getNodesBounds } = useReactFlow();
+  // Inline edge-label input (DGC-85) — `null` when closed. Carries whether it is
+  // editing an existing edge or naming a new (Alt-drag) one, plus the anchor.
+  const [labelEditor, setLabelEditor] = useState<LabelEditorState | null>(null);
+  const { fitView, getNodes, getNodesBounds, screenToFlowPosition } = useReactFlow();
 
   useEffect(() => {
     saveLayoutPrefs(prefs);
@@ -197,6 +219,8 @@ function DiagramCanvas() {
   useEffect(() => {
     if (!diagramName) return;
     setOverrides({});
+    // Drops recorded against the previous diagram must not land on this one.
+    pendingDropsRef.current.clear();
     const controller = new AbortController();
     let cancelled = false;
     fetchOverrides(diagramName, controller.signal)
@@ -227,6 +251,45 @@ function DiagramCanvas() {
       putOverrides(name, next).catch((err) => console.error("save layout overrides failed", err));
     }, LAYOUT_SAVE_DEBOUNCE_MS);
   }, []);
+
+  // Drop-point placement (DGC-86): once a broadcast brings back a node we just
+  // dropped from the palette, pin it at the recorded drop point via the normal
+  // override path — so it lands under the cursor instead of wherever ELK chose.
+  // Runs on every `base` change (a new node only arrives through a re-layout);
+  // stale entries (an add that was rejected, so the node never comes) are pruned
+  // by TTL so the map can't leak. Other nodes' positions are never touched.
+  useEffect(() => {
+    if (pendingDropsRef.current.size === 0 || !diagramName) return;
+    const now = Date.now();
+    const byId = new Map(base.nodes.map((n) => [n.id, n] as const));
+    // Absolute origins (for converting a drop inside a group into the parent-
+    // relative frame overrides are stored in). Reuses the DGC-19 resolver.
+    const absBoxes = absoluteBoxes(
+      base.nodes.map((n) => {
+        const { width, height } = nodeSize(n);
+        return { id: n.id, parentId: n.parentId, position: n.position, width, height };
+      }),
+    );
+    let next = overridesRef.current;
+    let changed = false;
+    for (const [name, pending] of [...pendingDropsRef.current]) {
+      if (now - pending.ts > DROP_PENDING_TTL_MS) {
+        pendingDropsRef.current.delete(name);
+        continue;
+      }
+      const node = byId.get(name);
+      if (!node) continue; // hasn't arrived on the canvas yet — keep waiting
+      const parentAbs = node.parentId ? absBoxes.get(node.parentId) ?? null : null;
+      const pos = dropOverridePosition(pending.dropAbs, nodeSize(node), parentAbs);
+      next = { ...next, [name]: { ...next[name], x: pos.x, y: pos.y } };
+      changed = true;
+      pendingDropsRef.current.delete(name);
+    }
+    if (changed) {
+      setOverrides(next);
+      scheduleSave(diagramName, next);
+    }
+  }, [base, diagramName, setOverrides, scheduleSave]);
 
   // Group resize (DGC-19): NodeResizer dispatches the new size through
   // `onNodesChange`; on the terminal frame (`resizing:false`) we persist it as
@@ -387,6 +450,10 @@ function DiagramCanvas() {
   // label prompt for the new edge. Tracked in a ref because React Flow's
   // `onConnect` hands us the connection, not the originating event's modifiers.
   const altPressedRef = useRef(false);
+  // Last pointer position (viewport coords) — `onConnect` gets the connection but
+  // not an event, so the inline label input (DGC-85) anchors at where the drag
+  // was released, which is the last pointermove.
+  const pointerRef = useRef({ x: 0, y: 0 });
   useEffect(() => {
     const track = (e: KeyboardEvent) => {
       altPressedRef.current = e.altKey;
@@ -394,13 +461,18 @@ function DiagramCanvas() {
     const clear = () => {
       altPressedRef.current = false;
     };
+    const trackPointer = (e: PointerEvent) => {
+      pointerRef.current = { x: e.clientX, y: e.clientY };
+    };
     window.addEventListener("keydown", track);
     window.addEventListener("keyup", track);
     window.addEventListener("blur", clear);
+    window.addEventListener("pointermove", trackPointer);
     return () => {
       window.removeEventListener("keydown", track);
       window.removeEventListener("keyup", track);
       window.removeEventListener("blur", clear);
+      window.removeEventListener("pointermove", trackPointer);
     };
   }, []);
 
@@ -438,40 +510,103 @@ function DiagramCanvas() {
       }
       const group = groupAtPoint(event.clientX, event.clientY, boxes);
       const op = buildDropNodeOp(iconId, nodes.map((n) => n.id), group);
+      // Absolute flow coords of the drop point (DGC-86) — recorded so the new
+      // node lands here once the broadcast returns it, instead of at ELK's spot.
+      const dropAbs = screenToFlowPosition({ x: event.clientX, y: event.clientY });
       void postEdit(diagramName, [op]).then((result) => {
-        if (result.ok) showEditToast(`Đã thêm node "${op.name}"${group ? ` vào nhóm "${group}"` : ""}`);
-        else showEditToast(`Không thêm được node: ${result.error ?? "lỗi không rõ"}`, true);
+        if (result.ok) {
+          pendingDropsRef.current.set(op.name, { dropAbs, ts: Date.now() });
+          showEditToast(`Đã thêm node "${op.name}"${group ? ` vào nhóm "${group}"` : ""}`);
+        } else {
+          showEditToast(`Không thêm được node: ${result.error ?? "lỗi không rõ"}`, true);
+        }
       });
     },
-    [diagramName, showEditToast],
+    [diagramName, showEditToast, screenToFlowPosition],
   );
 
-  // Handle-drag from node A to node B → add the edge `A > B`. Hold Alt on drop
-  // to be prompted for a label (cancel = add nothing). Same write path as above.
-  const onConnect = useCallback(
-    (connection: Connection) => {
+  // POST an `add_edge` (optionally labelled) and toast the receipt — the shared
+  // write path for a plain connect, an Alt-drag that got a label, and one that
+  // was dismissed (added without a label).
+  const postAddEdge = useCallback(
+    (from: string, to: string, label?: string) => {
       if (!diagramName) return;
-      const { source, target } = connection;
-      if (!source || !target) return;
-      let op: ReturnType<typeof buildAddEdgeOp>;
-      if (altPressedRef.current) {
-        const input = window.prompt(`Nhãn cho cạnh "${source}" → "${target}" (bỏ trống nếu không cần):`, "");
-        if (input === null) return; // cancelled → add nothing
-        op = buildAddEdgeOp(source, target, input);
-      } else {
-        op = buildAddEdgeOp(source, target);
-      }
+      const op = buildAddEdgeOp(from, to, label);
       if (!op) return;
-      const edgeOp = op;
-      void postEdit(diagramName, [edgeOp]).then((result) => {
+      void postEdit(diagramName, [op]).then((result) => {
         if (result.ok) {
-          showEditToast(`Đã thêm cạnh ${edgeOp.from} > ${edgeOp.to}${edgeOp.label ? `: ${edgeOp.label}` : ""}`);
+          showEditToast(`Đã thêm cạnh ${op.from} > ${op.to}${op.label ? `: ${op.label}` : ""}`);
         } else {
           showEditToast(`Không thêm được cạnh: ${result.error ?? "lỗi không rõ"}`, true);
         }
       });
     },
     [diagramName, showEditToast],
+  );
+
+  // Handle-drag from node A to node B → add the edge `A > B`. Plain drop adds it
+  // straight away; holding Alt (Option) on drop opens the inline label input
+  // (DGC-85, replacing window.prompt) — the edge is only written when that input
+  // resolves (Enter → with label; Esc/blur → without, see handleLabelCancel).
+  const onConnect = useCallback(
+    (connection: Connection) => {
+      if (!diagramName) return;
+      const { source, target } = connection;
+      if (!source || !target) return;
+      if (altPressedRef.current) {
+        setLabelEditor({ kind: "new", from: source, to: target, x: pointerRef.current.x, y: pointerRef.current.y });
+        return;
+      }
+      postAddEdge(source, target);
+    },
+    [diagramName, postAddEdge],
+  );
+
+  // Double-click an edge → edit its label (DGC-85). Opens the same inline input,
+  // prefilled with the current label, anchored at the click. `zoomOnDoubleClick`
+  // is already off so nothing zooms underneath.
+  const onEdgeDoubleClick = useCallback<EdgeMouseHandler>((event, edge) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const current = typeof edge.label === "string" ? edge.label : "";
+    setLabelEditor({ kind: "edit", edgeId: edge.id, current, x: event.clientX, y: event.clientY });
+  }, []);
+
+  // Inline label input resolved with a value (Enter):
+  //   • editing an edge → a `set_attr {label}` op (blank clears it; unchanged is
+  //     a no-op, buildSetEdgeLabelOp returns null);
+  //   • a new (Alt-drag) edge → add it with the typed label.
+  const handleLabelSubmit = useCallback(
+    (editor: LabelEditorState, value: string) => {
+      setLabelEditor(null);
+      if (!diagramName) return;
+      if (editor.kind === "new") {
+        postAddEdge(editor.from, editor.to, value);
+        return;
+      }
+      const op = buildSetEdgeLabelOp(editor.edgeId, editor.current, value);
+      if (!op) return; // unchanged → nothing to write
+      void postEdit(diagramName, [op]).then((result) => {
+        if (result.ok) {
+          showEditToast(op.value === null ? "Đã bỏ nhãn cạnh" : `Đã đổi nhãn cạnh → "${op.value}"`);
+        } else {
+          showEditToast(`Không đổi nhãn được: ${result.error ?? "lỗi không rõ"}`, true);
+        }
+      });
+    },
+    [diagramName, postAddEdge, showEditToast],
+  );
+
+  // Inline label input dismissed (Esc or blur):
+  //   • editing an edge → leave the label untouched (do nothing);
+  //   • a new (Alt-drag) edge → still add it, WITHOUT a label. The drag gesture
+  //     already completed, so discarding the whole edge would be jarring (DGC-85).
+  const handleLabelCancel = useCallback(
+    (editor: LabelEditorState) => {
+      setLabelEditor(null);
+      if (editor.kind === "new") postAddEdge(editor.from, editor.to);
+    },
+    [postAddEdge],
   );
 
   // Drop of a dragged node OR group. DGC-19 splits the outcome by where it
@@ -547,6 +682,8 @@ function DiagramCanvas() {
       saveTimerRef.current = null;
     }
     setOverrides({});
+    // Drop-in-flight placements would otherwise re-pin a node just after reset.
+    pendingDropsRef.current.clear();
     if (diagramName) {
       deleteOverrides(diagramName).catch((err) => console.error("reset layout failed", err));
     }
@@ -631,6 +768,8 @@ function DiagramCanvas() {
         // empty pane just dismisses an open one (browser menu left untouched).
         onNodeContextMenu={onNodeContextMenu}
         onPaneContextMenu={closeContextMenu}
+        // Double-click an edge → inline label editing (DGC-85).
+        onEdgeDoubleClick={onEdgeDoubleClick}
         // Handle-drag edge (DGC-18): a connection dropped on any node adds the
         // edge via /api/edit. Loose mode treats a node's two hidden handles as
         // interchangeable so a drag can start/end on either side — the user
@@ -695,6 +834,17 @@ function DiagramCanvas() {
           onClose={closeContextMenu}
           onSetAttr={handleSetAttr}
           onDelete={handleContextDelete}
+        />
+      )}
+      {labelEditor && (
+        <InlineEdgeInput
+          key={`${labelEditor.kind}:${labelEditor.x}:${labelEditor.y}`}
+          x={labelEditor.x}
+          y={labelEditor.y}
+          initialValue={labelEditor.kind === "edit" ? labelEditor.current : ""}
+          placeholder={labelEditor.kind === "edit" ? "Nhãn cạnh…" : "Nhãn (Enter) · Esc = không nhãn"}
+          onSubmit={(value) => handleLabelSubmit(labelEditor, value)}
+          onCancel={() => handleLabelCancel(labelEditor)}
         />
       )}
       <StatusPill status={status} />

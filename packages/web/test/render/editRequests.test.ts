@@ -6,6 +6,7 @@ import {
   buildDuplicateOps,
   buildRemoveOps,
   buildSetAttrOp,
+  buildSetEdgeLabelOp,
   describeRemoval,
   describeReparent,
   groupAtPoint,
@@ -337,5 +338,51 @@ describe("buildAddEdgeOp", () => {
   it("returns null when an endpoint is missing", () => {
     expect(buildAddEdgeOp("", "DB")).toBeNull();
     expect(buildAddEdgeOp("API", "")).toBeNull();
+  });
+});
+
+describe("buildSetEdgeLabelOp", () => {
+  it("sets a new label via set_attr addressed by the edge id", () => {
+    expect(buildSetEdgeLabelOp("e1", "reads", "writes")).toEqual({
+      op: "set_attr",
+      id: "e1",
+      key: "label",
+      value: "writes",
+    });
+  });
+
+  it("adds a label to a previously unlabeled edge", () => {
+    expect(buildSetEdgeLabelOp("e2", "", "syncs")).toEqual({
+      op: "set_attr",
+      id: "e2",
+      key: "label",
+      value: "syncs",
+    });
+  });
+
+  it("clears the label (value null) when the new text is blank", () => {
+    expect(buildSetEdgeLabelOp("e1", "reads", "")).toEqual({
+      op: "set_attr",
+      id: "e1",
+      key: "label",
+      value: null,
+    });
+    expect(buildSetEdgeLabelOp("e1", "reads", "   ")).toEqual({
+      op: "set_attr",
+      id: "e1",
+      key: "label",
+      value: null,
+    });
+  });
+
+  it("trims the new label before applying", () => {
+    expect(buildSetEdgeLabelOp("e1", "reads", "  writes  ")).toMatchObject({ value: "writes" });
+  });
+
+  it("returns null (no-op) when the label is unchanged, trim-insensitively", () => {
+    expect(buildSetEdgeLabelOp("e1", "reads", "reads")).toBeNull();
+    expect(buildSetEdgeLabelOp("e1", "reads", "  reads  ")).toBeNull();
+    expect(buildSetEdgeLabelOp("e1", "", "")).toBeNull();
+    expect(buildSetEdgeLabelOp("e1", "", "   ")).toBeNull();
   });
 });
