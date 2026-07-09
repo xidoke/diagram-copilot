@@ -23,6 +23,13 @@ const NAMED_COLORS: Readonly<Record<string, string>> = Object.freeze({
 });
 
 /**
+ * The DSL color token names, in palette order — the single source of truth for
+ * the context-menu "đổi màu" swatches (DGC-20). Each resolves through
+ * {@link resolveColor}; a swatch renders with that value.
+ */
+export const COLOR_TOKENS: readonly string[] = Object.freeze(Object.keys(NAMED_COLORS));
+
+/**
  * Resolves a DSL color token name (case-insensitive, whitespace-trimmed)
  * to a CSS color value. Never throws: an unrecognized name or a missing
  * `color` both fall back to the theme's default accent token

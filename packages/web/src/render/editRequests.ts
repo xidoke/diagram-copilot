@@ -37,6 +37,7 @@ export type EditOp =
   | { op: "remove"; id: string }
   | { op: "remove_edge"; from: string; to: string; label?: string }
   | { op: "rename"; id: string; new_name: string }
+  | { op: "set_attr"; id: string; key: "icon" | "color" | "label"; value: string | null }
   | { op: "move_to_group"; id: string; group: string | null };
 
 /**
@@ -124,6 +125,86 @@ export function buildDropNodeOp(
   };
   if (group !== undefined && group !== "") op.group = group;
   return op;
+}
+
+// ── Context menu → set_attr, Cmd+D → duplicate (DGC-20 v1.2) ──
+
+/**
+ * Build a `set_attr` op — the context menu's "đổi icon" / "đổi màu" actions.
+ * `value` of `null` REMOVES the attribute (server strips it), which is what the
+ * "bỏ icon" / "bỏ màu" choices send.
+ */
+export function buildSetAttrOp(
+  id: string,
+  key: "icon" | "color" | "label",
+  value: string | null,
+): Extract<EditOp, { op: "set_attr" }> {
+  return { op: "set_attr", id, key, value };
+}
+
+/** The subset of a React Flow node the duplicate builder reads. */
+export interface DuplicableNode {
+  id: string;
+  /** React Flow node type — groups (ARCH_GROUP_TYPE) are skipped (see below). */
+  type?: string;
+  /** Parent group id, if nested — the copy lands in the same group. */
+  parentId?: string;
+  /** Rendered data: `label`/`icon`/`color` are copied onto the duplicate. */
+  data?: { label?: unknown; icon?: unknown; color?: unknown };
+}
+
+/**
+ * Build the `add_node` op that duplicates one node (Cmd+D). The copy:
+ * - takes a fresh unique name off the original's id (`API` → `API-2`, via
+ *   {@link uniqueName} against `taken`);
+ * - carries the original's `icon` and `color` when set;
+ * - carries the original's `label` ONLY when it is EXPLICIT (differs from the
+ *   id). A default label (label === id) is dropped so the copy displays its own
+ *   new name (`API-2`) instead of confusingly reading as the original (`API`);
+ * - lands in the same group (`parentId`) as the original.
+ *
+ * Pure: the caller passes the `taken` set; {@link buildDuplicateOps} threads it
+ * across a multi-select batch so two copies never collide.
+ */
+export function buildDuplicateOp(
+  node: DuplicableNode,
+  taken: ReadonlySet<string>,
+): Extract<EditOp, { op: "add_node" }> {
+  const op: Extract<EditOp, { op: "add_node" }> = {
+    op: "add_node",
+    name: uniqueName(node.id, taken),
+  };
+  const icon = node.data?.icon;
+  if (typeof icon === "string" && icon !== "") op.icon = icon;
+  const color = node.data?.color;
+  if (typeof color === "string" && color !== "") op.color = color;
+  const label = node.data?.label;
+  if (typeof label === "string" && label !== "" && label !== node.id) op.label = label;
+  if (typeof node.parentId === "string" && node.parentId !== "") op.group = node.parentId;
+  return op;
+}
+
+/**
+ * Duplicate every LEAF node in `nodes` (Cmd+D on a selection). Groups are
+ * skipped — `add_node` makes a leaf, so duplicating a group's box (let alone
+ * its members) is a v1 non-goal. Unique names are threaded through one `taken`
+ * set seeded from `existingIds`, so duplicating several nodes — or a node and
+ * its own existing copy — in a single batch yields distinct names that also
+ * clear the server's all-or-nothing uniqueness check.
+ */
+export function buildDuplicateOps(
+  nodes: readonly DuplicableNode[],
+  existingIds: Iterable<string>,
+): Extract<EditOp, { op: "add_node" }>[] {
+  const taken = new Set(existingIds);
+  const ops: Extract<EditOp, { op: "add_node" }>[] = [];
+  for (const node of nodes) {
+    if (node.type === ARCH_GROUP_TYPE) continue;
+    const op = buildDuplicateOp(node, taken);
+    taken.add(op.name);
+    ops.push(op);
+  }
+  return ops;
 }
 
 /** A group's on-screen box (client coords), used to hit-test a drop point. */
