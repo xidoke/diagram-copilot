@@ -66,4 +66,19 @@ describe("LayoutOverridesSchema", () => {
     expect(LayoutOverridesSchema.safeParse({ api: { x: 1 } }).success).toBe(false);
     expect(LayoutOverridesSchema.safeParse([]).success).toBe(false);
   });
+
+  it("carries an optional manual group size through parsing (DGC-87)", () => {
+    const result = LayoutOverridesSchema.safeParse({
+      vpc: { x: 10, y: 20, width: 282, height: 278 },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.vpc).toEqual({ x: 10, y: 20, width: 282, height: 278 });
+    }
+  });
+
+  it("rejects a non-numeric size but still accepts sizeless entries (back-compat)", () => {
+    expect(LayoutOverridesSchema.safeParse({ vpc: { x: 1, y: 2, width: "wide" } }).success).toBe(false);
+    expect(LayoutOverridesSchema.safeParse({ api: { x: 1, y: 2 } }).success).toBe(true);
+  });
 });

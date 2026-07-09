@@ -47,16 +47,24 @@ export function layoutSidecarPath(name: string): string {
   return `${name}${LAYOUT_SIDECAR_EXT}`;
 }
 
-/** Manual position of one node/group on the canvas, in canvas pixels. */
+/**
+ * Manual position of one node/group on the canvas, in canvas pixels.
+ * `width`/`height` (DGC-87) carry a manual group resize; absent for plain
+ * drags, so pre-existing sidecars stay valid.
+ */
 export interface LayoutPosition {
   x: number;
   y: number;
+  width?: number;
+  height?: number;
 }
 
 /** Zod schema for {@link LayoutPosition}. */
 export const LayoutPositionSchema = z.object({
   x: z.number(),
   y: z.number(),
+  width: z.number().optional(),
+  height: z.number().optional(),
 });
 
 /**
