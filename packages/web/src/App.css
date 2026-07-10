@@ -706,6 +706,42 @@ body {
   color: var(--node-accent, var(--text-dim));
 }
 
+/* Collapse/expand toggle (DGC-67): ▾ on the group title band, ▸ on the compact
+   node a collapsed group leaves behind. `nodrag` (set in CollapseToggle) keeps
+   React Flow from starting a header drag from the press. */
+.arch-collapse-btn {
+  pointer-events: auto;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.arch-collapse-btn:hover {
+  color: var(--accent);
+  background: var(--group-title-hover, rgba(74, 163, 255, 0.14));
+}
+/* Compact stand-in for a collapsed group (DGC-67): dashed border echoes the
+   group outline it replaces, and a "stacked cards" shadow hints that content
+   is folded underneath. */
+.arch-node--collapsed {
+  border-style: dashed;
+  box-shadow:
+    3px 3px 0 -1px var(--panel),
+    3px 3px 0 0 var(--border),
+    var(--node-glow),
+    var(--node-shadow);
+}
+
 .react-flow__edge-path {
   stroke: var(--accent);
   stroke-width: 1.6;

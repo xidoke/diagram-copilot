@@ -36,6 +36,12 @@ export interface ArchNodeData extends Record<string, unknown> {
    * on group nodes; drives the depth-based background tint in `ArchGroup`.
    */
   depth?: number;
+  /**
+   * `true` on the compact leaf standing in for a collapsed group (DGC-67).
+   * Never set by `toFlow` itself — `markCollapsedNodes` (collapse.ts) stamps
+   * it after the fact; `ArchNode` then shows the ▸ expand toggle + styling.
+   */
+  collapsed?: boolean;
 }
 
 interface NodeMeta {

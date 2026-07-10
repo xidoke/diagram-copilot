@@ -73,6 +73,15 @@ import {
   type NodeGeom,
 } from "./render/reparent.js";
 import { applyDiffToEdges, applyDiffToNodes, type DiffOverlay } from "./render/diffOverlay.js";
+import {
+  collapseDoc,
+  collapsedNodeIds,
+  loadCollapsed,
+  markCollapsedNodes,
+  pruneCollapsedSizes,
+  saveCollapsed,
+} from "./render/collapse.js";
+import { CollapseContext, type CollapseActions } from "./render/CollapseContext.js";
 import type { CompareData } from "./render/compareMode.js";
 import { ComparePane } from "./components/ComparePane.js";
 
@@ -109,6 +118,9 @@ type LabelEditorState =
 
 const nodeTypes = { [ARCH_NODE_TYPE]: ArchNode, [ARCH_GROUP_TYPE]: ArchGroup };
 const edgeTypes = { [ELK_EDGE_TYPE]: ElkEdge };
+
+/** Stable "no groups collapsed" set — keeps effect deps quiet when inactive. */
+const NO_COLLAPSED: ReadonlySet<string> = new Set();
 
 /** A node's rendered size — `width`/`height` (set by resize/override) win over the
  *  `style` size `toFlow` gives it. Used to hit-test a drop against group boxes. */
@@ -170,6 +182,37 @@ function DiagramCanvas() {
   const [labelEditor, setLabelEditor] = useState<LabelEditorState | null>(null);
   const { fitView, getNodes, getNodesBounds, screenToFlowPosition } = useReactFlow();
 
+  // Group collapse/expand (DGC-67) — VIEW state, per diagram, persisted to
+  // localStorage (`dgc.collapsed.<name>`), never to the doc or the layout
+  // sidecar. The state carries the diagram name it belongs to so a stale set
+  // from diagram A is never applied to diagram B; a fresh diagram reads its
+  // saved set synchronously (useMemo) — no flash of the expanded layout.
+  const [collapsedState, setCollapsedState] = useState<{ name: string; ids: ReadonlySet<string> } | null>(null);
+  const collapsed = useMemo<ReadonlySet<string>>(() => {
+    if (!diagramName) return NO_COLLAPSED;
+    if (collapsedState?.name === diagramName) return collapsedState.ids;
+    return loadCollapsed(diagramName);
+  }, [diagramName, collapsedState]);
+  const toggleCollapse = useCallback(
+    (id: string) => {
+      if (!diagramName) return;
+      setCollapsedState((prev) => {
+        const ids = new Set(prev?.name === diagramName ? prev.ids : loadCollapsed(diagramName));
+        if (ids.has(id)) ids.delete(id);
+        else ids.add(id);
+        saveCollapsed(diagramName, ids);
+        return { name: diagramName, ids };
+      });
+    },
+    [diagramName],
+  );
+  // Handed to ArchGroup/ArchNode's CollapseToggle via context (same pattern as
+  // EditContext). `null` without an active diagram → the ▾/▸ buttons hide.
+  const collapseActions = useMemo<CollapseActions | null>(
+    () => (diagramName ? { toggle: toggleCollapse } : null),
+    [diagramName, toggleCollapse],
+  );
+
   useEffect(() => {
     saveLayoutPrefs(prefs);
   }, [prefs]);
@@ -188,13 +231,19 @@ function DiagramCanvas() {
     }
     let stale = false;
     const { doc, options } = applyPrefs(lastDiagram.doc, prefs);
+    // Collapse (DGC-67) is a pure doc transform applied BEFORE ELK: collapsed
+    // groups become representative leaves with re-targeted, deduped edges, so
+    // the layout engine re-lays out the whole (smaller) doc — no coordinate
+    // patching. `applied` marks the representatives for the ▸ affordance.
+    const { doc: viewDoc, applied } = collapseDoc(doc, collapsed);
     const indicatorId = window.setTimeout(() => {
       if (!stale) setLayingOut(true);
     }, LAYOUT_INDICATOR_DELAY_MS);
-    layoutDiagram(doc, options)
+    layoutDiagram(viewDoc, options)
       .then((graph) => {
         if (stale) return;
-        setBase(toFlow(doc, graph));
+        const f = toFlow(viewDoc, graph);
+        setBase({ nodes: markCollapsedNodes(f.nodes, applied), edges: f.edges });
       })
       .catch((err) => console.error("layout failed", err))
       .finally(() => {
@@ -206,7 +255,7 @@ function DiagramCanvas() {
       stale = true;
       window.clearTimeout(indicatorId);
     };
-  }, [lastDiagram, prefs]);
+  }, [lastDiagram, prefs, collapsed]);
 
   // Fold saved overrides onto the freshly auto-laid-out base. Runs on a
   // re-layout (`base`) and whenever `overrides` change (fetch / drag / reset) —
@@ -219,11 +268,15 @@ function DiagramCanvas() {
     // canvas is the RIGHT pane, so the compare payload's `right` classes apply
     // instead (StepsNav keeps the two modes mutually exclusive). `null` → no-op.
     const overlay = compare ? compare.right : diffOverlay;
+    // A collapsed group's saved SIZE override must not inflate its compact
+    // representative node — strip width/height (keep x/y) for those ids
+    // (DGC-67). Position + dirty-edge behavior is unchanged otherwise.
+    const effOverrides = pruneCollapsedSizes(overrides, collapsedNodeIds(base.nodes));
     setFlow({
-      nodes: applyDiffToNodes(applyOverrides(base.nodes, overrides), overlay),
+      nodes: applyDiffToNodes(applyOverrides(base.nodes, effOverrides), overlay),
       // Pass nodes so a dragged group also dirties edges touching its
       // descendants / crossing its boundary (DGC-71 ancestor case).
-      edges: applyDiffToEdges(markDirtyEdges(base.edges, overrides, base.nodes), overlay),
+      edges: applyDiffToEdges(markDirtyEdges(base.edges, effOverrides, base.nodes), overlay),
     });
   }, [base, overrides, diffOverlay, compare]);
 
@@ -773,6 +826,7 @@ function DiagramCanvas() {
 
   return (
     <EditContext.Provider value={editActions}>
+    <CollapseContext.Provider value={collapseActions}>
     <div className={`app-shell${presentOn ? " presenting" : ""}${comparing ? " comparing" : ""}`}>
       {lastDiagram && <Picker workspace={workspace} name={lastDiagram.name} version={lastDiagram.version} />}
       <Toolbar
@@ -910,6 +964,7 @@ function DiagramCanvas() {
         workspace={workspace}
       />
     </div>
+    </CollapseContext.Provider>
     </EditContext.Provider>
   );
 }

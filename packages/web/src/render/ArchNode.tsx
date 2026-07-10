@@ -2,6 +2,7 @@ import { useState, type CSSProperties } from "react";
 import { Handle, NodeResizer, Position, type NodeProps } from "@xyflow/react";
 import { getIcon } from "@diagram-copilot/icons";
 import { resolveColor } from "./colors.js";
+import { useCollapseActions } from "./CollapseContext.js";
 import { useEditActions } from "./EditContext.js";
 import { validateRename } from "./editRequests.js";
 import type { ArchNodeData } from "./toFlow.js";
@@ -84,9 +85,47 @@ export function EditableLabel({ id, label, className }: { id: string; label: str
   );
 }
 
+/**
+ * Collapse/expand toggle (DGC-67): ▾ on a group's title band collapses it into
+ * a compact node; ▸ on that representative node expands it back. A BUTTON, not
+ * a double-click — double-click is already the rename gesture (DGC-78), and an
+ * explicit affordance beats a hidden one for a destructive-looking view change.
+ *
+ * Kept as a CHILD component (like {@link EditableLabel}) so `ArchNode`/
+ * `ArchGroup` stay hook-free, and class-tagged `nodrag` so pressing it on the
+ * group title band (the drag handle) never starts a drag. Without a
+ * {@link useCollapseActions} provider (render tests, compare pane, no active
+ * diagram) it renders nothing.
+ */
+export function CollapseToggle({ id, collapsed }: { id: string; collapsed: boolean }) {
+  const actions = useCollapseActions();
+  if (actions === null) return null;
+  const hint = collapsed ? `Mở rộng nhóm "${id}"` : `Thu gọn nhóm "${id}"`;
+  return (
+    <button
+      type="button"
+      className="arch-collapse-btn nodrag nopan"
+      title={hint}
+      aria-label={hint}
+      aria-expanded={!collapsed}
+      onClick={(e) => {
+        e.stopPropagation();
+        actions.toggle(id);
+      }}
+      // Keep the press/double-click from bubbling into group selection, the
+      // header drag handle, or the rename double-click next to it.
+      onMouseDown={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+    >
+      {collapsed ? "▸" : "▾"}
+    </button>
+  );
+}
+
 /** Leaf node — theme B "dark blueprint": optional icon chip + label. */
 export function ArchNode({ id, data }: NodeProps) {
-  const { label, direction, icon, color } = data as ArchNodeData;
+  const { label, direction, icon, color, collapsed } = data as ArchNodeData;
   const pos = HANDLE_POSITIONS[direction] ?? HANDLE_POSITIONS.right;
   // `color` is a token *name* (e.g. "orange"); resolveColor turns it into a
   // real CSS value, always falling back to the theme accent so the chip
@@ -96,11 +135,18 @@ export function ArchNode({ id, data }: NodeProps) {
   // uniform.
   const accent = resolveColor(color);
   const style = color !== undefined ? ({ "--node-accent": accent } as CSSProperties) : undefined;
-  const className = color !== undefined ? "arch-node arch-node--accent" : "arch-node";
+  const className = [
+    "arch-node",
+    ...(color !== undefined ? ["arch-node--accent"] : []),
+    // A collapsed group's compact representative (DGC-67): dashed border +
+    // stacked shadow, styled in App.css.
+    ...(collapsed === true ? ["arch-node--collapsed"] : []),
+  ].join(" ");
 
   return (
     <div className={className} style={style}>
       <Handle type="target" position={pos.target} className="arch-handle" />
+      {collapsed === true && <CollapseToggle id={id} collapsed />}
       {icon !== undefined && (
         <span
           className="arch-node-chip"
@@ -164,6 +210,10 @@ export function ArchGroup({ id, data, selected }: NodeProps) {
           the label renames the group (DGC-78) — the rename input is `nodrag`,
           so typing in it never starts a drag. */}
       <div className="arch-group__title" title="Kéo tiêu đề để di chuyển nhóm">
+        {/* ▾ collapse (DGC-67): folds the group into one compact node. Lives on
+            the title band (already pointer-interactive) as an explicit button —
+            double-click stays reserved for rename. */}
+        <CollapseToggle id={id} collapsed={false} />
         {icon !== undefined && (
           <span
             className="arch-group-chip"

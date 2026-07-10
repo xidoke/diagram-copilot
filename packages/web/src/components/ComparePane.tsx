@@ -37,6 +37,7 @@ import type { DiagramDoc } from "@diagram-copilot/core";
 import { layoutDiagram } from "@diagram-copilot/layout";
 import { applyPrefs, type LayoutPrefs } from "../render/layoutOptions.js";
 import { ArchGroup, ArchNode } from "../render/ArchNode.js";
+import { CollapseContext } from "../render/CollapseContext.js";
 import { ELK_EDGE_TYPE, ElkEdge } from "../render/ElkEdge.js";
 import { ARCH_GROUP_TYPE, ARCH_NODE_TYPE, toFlow } from "../render/toFlow.js";
 import { applyDiffToEdges, applyDiffToNodes, type DiffOverlay } from "../render/diffOverlay.js";
@@ -111,6 +112,10 @@ export function ComparePane({ name, doc, overlay, prefs }: ComparePaneProps) {
       <div className="compare-pane__badge" title={name}>
         <b>{name}</b> · bước trước
       </div>
+      {/* Collapse (DGC-67) is live-canvas-only in v1: this pane renders the
+          previous step at full detail, so the inherited provider is nulled —
+          otherwise its ▾ buttons would show here but toggle the RIGHT pane. */}
+      <CollapseContext.Provider value={null}>
       <ReactFlowProvider>
         <ReactFlow
           id="compare-pane"
@@ -131,6 +136,7 @@ export function ComparePane({ name, doc, overlay, prefs }: ComparePaneProps) {
           <PaneFitter nodeCount={flow.nodes.length} name={name} />
         </ReactFlow>
       </ReactFlowProvider>
+      </CollapseContext.Provider>
     </div>
   );
 }
