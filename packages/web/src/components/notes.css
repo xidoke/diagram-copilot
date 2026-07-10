@@ -64,8 +64,13 @@
   border-color: var(--accent);
 }
 .notes-toggle__glyph {
-  font-size: 15px;
+  display: inline-flex;
   line-height: 1;
+}
+.notes-toggle__glyph svg {
+  display: block;
+  width: 14px;
+  height: 14px;
 }
 .notes-toggle__text {
   font-size: 10px;

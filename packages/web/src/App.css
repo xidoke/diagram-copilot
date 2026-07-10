@@ -22,8 +22,8 @@ body {
 /* Top-left corner: active diagram name · version */
 .diagram-info {
   position: fixed;
-  top: 10px;
-  left: 10px;
+  top: var(--space-3);
+  left: var(--space-3);
   z-index: 10;
   background: var(--panel-translucent);
   border: 1px solid var(--border);
@@ -41,7 +41,7 @@ body {
 /* Error banner — top center, non-blocking */
 .error-banner {
   position: fixed;
-  top: 10px;
+  top: var(--space-3);
   left: 50%;
   transform: translateX(-50%);
   z-index: 11;
@@ -61,53 +61,88 @@ body {
   color: var(--text-strong);
 }
 
-/* Floating layout toolbar — top-right */
+/* Floating layout toolbar — top-right (DGC-94). Two segmented clusters on one
+   row: [Layout: spacing · direction · reset] [View: theme · present · palette
+   · export]. Each cluster is its own bordered surface; hairline separators
+   split the segments inside the Layout cluster. Never wraps at 1280px+. */
 .toolbar {
   position: fixed;
-  top: 10px;
-  right: 10px;
+  top: var(--space-3);
+  right: var(--space-3);
   z-index: 10;
   display: flex;
-  gap: 8px;
-  background: var(--panel-translucent);
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: var(--space-2);
+}
+.toolbar-cluster {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: var(--surface-overlay);
   border: 1px solid var(--border);
-  padding: 6px;
-  border-radius: 8px;
-  backdrop-filter: blur(6px);
+  border-radius: var(--radius);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--elev-1);
 }
 .toolbar-group {
   display: flex;
   gap: 2px;
 }
+.toolbar-sep {
+  flex: none;
+  width: 1px;
+  height: 16px;
+  margin: 0 3px;
+  background: var(--border-subtle);
+}
 .toolbar-btn {
-  min-width: 22px;
-  height: 22px;
-  padding: 0 6px;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 5px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   background: transparent;
-  border: 1px solid transparent;
-  border-radius: 5px;
+  border: none;
+  border-radius: var(--radius-sm);
   color: var(--text-dim);
-  font-size: 12px;
+  font-size: var(--font-ui-sm);
   font-weight: 600;
   line-height: 1;
   cursor: pointer;
 }
 .toolbar-btn:hover {
-  border-color: var(--border);
+  background: var(--control-hover-bg);
   color: var(--text);
 }
+.toolbar-btn:focus-visible {
+  outline: 1.5px solid var(--accent);
+  outline-offset: -1.5px;
+}
+/* Active = filled wash, not just a text-color change (DGC-94 audit). */
 .toolbar-btn--active {
-  background: var(--status-connected-bg);
-  border-color: var(--accent);
+  background: var(--accent-soft-bg);
+  color: var(--accent);
+}
+.toolbar-btn--active:hover {
+  background: var(--accent-soft-bg-hover);
   color: var(--accent);
 }
 .toolbar-btn--auto {
   font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: var(--tracking-caps);
+}
+/* Lucide glyphs (toolbarIcons.tsx) — one 14px stroke family for all chrome. */
+.toolbar-icon {
+  display: inline-flex;
+}
+.toolbar-icon svg {
+  display: block;
+  width: 14px;
+  height: 14px;
 }
 
 /* Undo button (T31) — bottom-left corner, the one free spot (info top-left,
@@ -116,7 +151,7 @@ body {
 .undo-btn {
   position: fixed;
   bottom: 16px;
-  left: 10px;
+  left: var(--space-3);
   z-index: 10;
   display: inline-flex;
   align-items: center;
@@ -141,77 +176,58 @@ body {
   cursor: default;
 }
 
-/* Floating export menu — top-right, 8px below the toolbar (10px top + ~36px
-   toolbar height + 8px gap). Own floating chrome (not part of Toolbar.tsx). */
+/* Export menu (DGC-94) — the trigger is a toolbar button inside the View
+   cluster (App.tsx passes ExportMenu as the Toolbar's slot); the dropdown
+   hangs below the cluster, right-aligned with its border. */
 .export-menu {
-  position: fixed;
-  top: 54px;
-  right: 10px;
-  z-index: 10;
-}
-.export-menu__trigger {
-  width: 28px;
-  height: 28px;
+  position: relative;
   display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--panel-translucent);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--text-dim);
-  font-size: 14px;
-  line-height: 1;
-  cursor: pointer;
-  backdrop-filter: blur(6px);
-}
-.export-menu__trigger:hover {
-  border-color: var(--border);
-  color: var(--text);
-}
-.export-menu__trigger[aria-expanded="true"] {
-  border-color: var(--accent);
-  color: var(--accent);
 }
 .export-menu__panel {
   position: absolute;
-  top: 34px;
-  right: 0;
+  top: calc(100% + 12px);
+  right: -4px;
   display: flex;
   flex-direction: column;
-  min-width: 160px;
-  background: var(--panel-translucent);
+  min-width: 176px;
+  background: var(--surface-overlay);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 4px;
-  backdrop-filter: blur(6px);
+  border-radius: var(--radius);
+  padding: var(--space-1);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--elev-2);
 }
 .export-menu__item {
   text-align: left;
   background: transparent;
-  border: 1px solid transparent;
-  border-radius: 5px;
-  padding: 6px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 6px var(--space-2);
   color: var(--text-dim);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--font-ui);
+  font-weight: 500;
   cursor: pointer;
 }
 .export-menu__item:hover {
-  border-color: var(--border);
   color: var(--text);
-  background: var(--group-accent-bg);
+  background: var(--control-hover-bg);
+}
+.export-menu__item:focus-visible {
+  outline: 1.5px solid var(--accent);
+  outline-offset: -1.5px;
 }
 .export-menu__status {
   position: absolute;
-  top: 34px;
-  right: 0;
-  max-width: 220px;
-  background: var(--panel-translucent);
+  top: calc(100% + 12px);
+  right: -4px;
+  max-width: 240px;
+  background: var(--surface-overlay);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius);
   padding: 6px 10px;
-  font-size: 11px;
-  backdrop-filter: blur(6px);
+  font-size: var(--font-ui-sm);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--elev-2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -225,7 +241,8 @@ body {
   border-color: var(--status-disconnected);
 }
 
-/* Floating status pill — bottom center */
+/* Floating status pill — bottom center. Tuned down in v2 (DGC-94): smaller
+   type, softer alpha border, medium weight — a quiet heartbeat, not a badge. */
 .status-pill {
   position: fixed;
   bottom: 16px;
@@ -235,24 +252,24 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 14px;
-  border-radius: 999px;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-full);
   border: 1px solid var(--border);
-  background: var(--panel-translucent);
-  backdrop-filter: blur(6px);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
+  background: var(--surface-overlay);
+  backdrop-filter: blur(12px);
+  font-size: var(--font-ui-sm);
+  font-weight: 500;
+  letter-spacing: 0.02em;
   color: var(--text-dim);
 }
 .status-pill__icon {
-  font-size: 11px;
+  font-size: 8px;
   line-height: 1;
 }
 
 .status-pill--connected {
   color: var(--status-connected);
-  border-color: var(--status-connected);
+  border-color: var(--status-connected-border);
   background: var(--status-connected-bg);
 }
 .status-pill--connecting {
@@ -260,7 +277,7 @@ body {
 }
 .status-pill--disconnected {
   color: var(--status-disconnected);
-  border-color: var(--status-disconnected);
+  border-color: var(--status-disconnected-border);
   background: var(--status-disconnected-bg);
 }
 
@@ -295,7 +312,7 @@ body {
   justify-content: center;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   color: var(--text-dim);
   font-size: 13px;
   line-height: 1;
@@ -425,8 +442,8 @@ body {
    siblings: left shows "‹name› · bước trước", right keeps the live Picker. */
 .compare-pane__badge {
   position: absolute;
-  top: 10px;
-  left: 10px;
+  top: var(--space-3);
+  left: var(--space-3);
   z-index: 10;
   background: var(--panel-translucent);
   border: 1px solid var(--border);
@@ -461,13 +478,13 @@ body {
 .react-flow__minimap.app-minimap {
   position: fixed !important;
   bottom: 48px !important;
-  right: 10px !important;
+  right: var(--space-3) !important;
   margin: 0 !important;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius);
   overflow: hidden;
-  backdrop-filter: blur(6px);
-  box-shadow: var(--node-glow);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--elev-2);
 }
 .app-minimap .react-flow__minimap-mask {
   stroke: var(--border);
@@ -487,8 +504,8 @@ body {
   border-radius: var(--node-radius);
   box-shadow: var(--node-glow), var(--node-shadow);
   color: var(--text-strong);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--font-node-label);
+  font-weight: 500;
 }
 /* Only applied when the node carries an explicit `color` — plain nodes
    keep a uniform border so the accent stays a deliberate signal. */
@@ -561,9 +578,9 @@ body {
 /* Group title flavor: match the uppercase corner label's size, but keep the
    typed text as-is (renames are case-sensitive names). */
 .arch-group__title .arch-rename-input {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  font-size: var(--font-group-title);
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
 }
 
 /* Pinned marker (T30): a small accent dot in the corner of any node whose
@@ -683,11 +700,11 @@ body {
   cursor: grabbing;
 }
 .arch-group-label {
-  font-size: 11px;
-  letter-spacing: 0.04em;
+  font-size: var(--font-group-title);
+  letter-spacing: var(--tracking-caps);
   text-transform: uppercase;
   color: var(--text-dim);
-  font-weight: 700;
+  font-weight: 600;
   white-space: nowrap;
 }
 .arch-group-chip {
@@ -768,10 +785,10 @@ body {
   pointer-events: all;
   background: var(--panel-translucent);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 2px 7px;
-  font-size: 11px;
-  font-weight: 600;
+  font-size: var(--font-ui-sm);
+  font-weight: 500;
   color: var(--text-dim);
   backdrop-filter: blur(4px);
   white-space: nowrap;
@@ -797,12 +814,12 @@ body {
 .empty-state__panel {
   pointer-events: auto;
   width: min(440px, calc(100vw - 48px));
-  background: var(--panel-translucent);
+  background: var(--surface-overlay);
   border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 26px 28px;
-  backdrop-filter: blur(10px);
-  box-shadow: var(--node-glow);
+  border-radius: 12px;
+  padding: var(--space-6) 28px;
+  backdrop-filter: blur(12px);
+  box-shadow: var(--elev-3);
 }
 .empty-state__title {
   color: var(--text-strong);
@@ -918,7 +935,7 @@ body {
 .layout-chip {
   position: fixed;
   bottom: 16px;
-  right: 10px;
+  right: var(--space-3);
   z-index: 10;
   display: inline-flex;
   align-items: center;

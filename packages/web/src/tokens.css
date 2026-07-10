@@ -1,21 +1,56 @@
 /**
- * Design tokens — dark blueprint theme (theme B, default) and light theme
- * (theme A, DGC-70). CSS variables only; actual component styles live in
- * App.css / component-local stylesheets and reference these — never a raw
- * hex/rgba — so a theme switch is a single attribute flip (see `theme.ts`).
+ * Design tokens v2 (DGC-94) — dark blueprint theme (theme B, default) and
+ * light theme (theme A, DGC-70). CSS variables only; actual component styles
+ * live in App.css / component-local stylesheets and reference these — never a
+ * raw hex/rgba — so a theme switch is a single attribute flip (see `theme.ts`).
  *
- * `:root` is the dark default (matches
- * spikes/reactflow-elk-layout/src/styles.css); `[data-theme="light"]`
- * overrides every token for the light theme. `theme.ts` toggles the
- * `data-theme` attribute on `<html>` — no attribute (or any value other than
- * "light") stays dark.
+ * v2 adds the scales the chrome polish hangs off:
+ *   - type scale     — UI base 13px, small labels/edge labels 11px, node
+ *                      label 12.5px medium, group title 11px caps.
+ *   - spacing scale  — multiples of 4.
+ *   - radius lock    — 8px chrome, 6px small controls, 999px pills; canvas
+ *                      containers (groups) stay 12px, nodes 8px.
+ *   - elevation      — 3 levels, shadows tinted to the surface hue (never
+ *                      pure black).
+ *   - semantic surfaces — surface-1 (panel), surface-2 (raised menus),
+ *                      surface-overlay (translucent blur chrome), plus
+ *                      border-subtle and control hover/active washes.
+ *
+ * `:root` is the dark default; `[data-theme="light"]` overrides every
+ * theme-dependent token. `theme.ts` toggles the `data-theme` attribute on
+ * `<html>` — no attribute (or any value other than "light") stays dark.
  */
 :root {
-  /* Surfaces */
+  /* ── Scales (theme-independent) ─────────────────────────────────── */
+
+  /* Type scale */
+  --font-ui: 13px; /* base UI text: menus, buttons with labels */
+  --font-ui-sm: 11px; /* small labels, edge labels, status meta */
+  --font-node-label: 12.5px; /* canvas node label (medium weight) */
+  --font-group-title: 11px; /* group title (uppercase caps) */
+  --tracking-caps: 0.06em; /* moderate tracking for uppercase labels */
+
+  /* Spacing scale — multiples of 4 */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+
+  /* Radius lock */
+  --radius: 8px; /* panels, clusters, menus, inputs */
+  --radius-sm: 6px; /* small controls (toolbar buttons, menu rows) */
+  --radius-full: 999px; /* pills */
+
+  /* ── Surfaces ───────────────────────────────────────────────────── */
   --bg: #0b0e14;
   --panel: #141b28;
-  --panel-translucent: #12182590;
+  --surface-1: #141b28; /* solid panel (nodes, drawers) */
+  --surface-2: #182134; /* raised menus / popovers */
+  --surface-overlay: rgba(19, 26, 40, 0.88); /* translucent blur chrome */
+  --panel-translucent: var(--surface-overlay); /* v1 alias — keep old CSS working */
   --border: #2c3f60;
+  --border-subtle: rgba(44, 63, 96, 0.55); /* hairlines inside panels */
 
   /* Text */
   --text: #dfe8ff;
@@ -26,19 +61,29 @@
   --accent: #4aa3ff;
   --grid-dot: #1a2740;
 
+  /* Control state washes (hover/active backgrounds for chrome buttons) */
+  --control-hover-bg: rgba(159, 180, 216, 0.1);
+
+  /* ── Elevation — 3 levels, tinted to the deep-blue surface hue ──── */
+  --elev-1: 0 1px 3px rgba(4, 10, 24, 0.45);
+  --elev-2: 0 4px 16px rgba(4, 10, 24, 0.5);
+  --elev-3: 0 12px 32px rgba(4, 10, 24, 0.6);
+
   /* Status */
   --status-connected: #28c840;
   --status-connected-bg: rgba(40, 200, 64, 0.14);
+  --status-connected-border: rgba(40, 200, 64, 0.4);
   --status-connecting: #9fb4d8;
   --status-connecting-bg: rgba(159, 180, 216, 0.1);
   --status-disconnected: #ff6b6b;
   --status-disconnected-bg: rgba(255, 107, 107, 0.14);
+  --status-disconnected-border: rgba(255, 107, 107, 0.4);
 
   /*
-   * Node chrome — stable names so a v1.1 light theme only needs to swap
+   * Node chrome — stable names so a theme/scale change only needs to swap
    * these values, not the component CSS that references them.
    */
-  --node-radius: 10px;
+  --node-radius: 8px; /* radius lock: nodes share the chrome 8px */
   --node-border-width: 1px;
   --node-accent-border-width: 2px;
   --node-glow: 0 0 14px rgba(60, 120, 255, 0.14);
@@ -51,13 +96,16 @@
   --icon-chip-radius: 5px;
   --icon-chip-glow: 0 0 8px currentColor;
 
-  /* Group chrome */
+  /* Group chrome — canvas containers keep a larger 12px radius (documented
+     exception to the 8px lock: container scale = chrome scale + 4). */
   --group-radius: 12px;
   --group-border-width: 1.5px;
   --group-bg: rgba(50, 110, 220, 0.05);
   --group-accent-bg: rgba(50, 110, 220, 0.08);
   /* Icon shown beside a group label when the group has an `icon`. */
   --group-chip-size: 12px;
+  /* Faint wash hinting the title band is grabbable (DGC-71). */
+  --group-title-hover: rgba(74, 163, 255, 0.1);
 
   /*
    * Depth tint — a translucent overlay layered over the group's background so
@@ -82,15 +130,20 @@
   /* Drawer/notes panel drop shadow (the side the panel slides in from
      stays hardcoded per-component; only the color is themed). */
   --panel-shadow-color: rgba(0, 0, 0, 0.45);
-  /* Accent-tinted background for small badges (Drawer's "remote changed"
-     pill) — derived from --accent, kept as an explicit token since CSS has
-     no `color-mix()` fallback old enough to rely on here. */
+  /* Accent-tinted background for small badges and ACTIVE chrome controls
+     (toolbar segmented buttons, Drawer's "remote changed" pill). */
   --accent-soft-bg: rgba(74, 163, 255, 0.14);
   --accent-soft-bg-hover: rgba(74, 163, 255, 0.24);
   /* React Flow's built-in <Controls> panel ships light-mode colors baked
      into its CSS; theme B inverts them to fit the dark canvas. The light
      theme needs no correction. */
   --controls-filter: invert(0.9) hue-rotate(180deg);
+
+  /* MiniMap (DGC-64) — theme-aware so the light canvas never shows a dark
+     framed box (DGC-94 audit). */
+  --minimap-bg: rgba(19, 26, 40, 0.88);
+  --minimap-mask: rgba(5, 8, 14, 0.72);
+  --minimap-node: rgba(74, 163, 255, 0.35);
 
   /* Diff overlay (DGC-79) — the Δ toggle glows added elements green and rings
      changed ones amber. Green shares the connected-status hue; amber is a new
@@ -109,11 +162,14 @@
 }
 
 [data-theme="light"] {
-  /* Surfaces */
+  /* Surfaces — off-white, never pure #fff (keeps depth against the canvas). */
   --bg: #f7f8fb;
-  --panel: #ffffff;
-  --panel-translucent: rgba(255, 255, 255, 0.86);
+  --panel: #fdfdfe;
+  --surface-1: #fdfdfe;
+  --surface-2: #fdfdfe;
+  --surface-overlay: rgba(253, 253, 254, 0.92);
   --border: #d5dbea;
+  --border-subtle: #e6eaf3;
 
   /* Text */
   --text: #2b3040;
@@ -125,13 +181,23 @@
   --accent: #4a7dd6;
   --grid-dot: #dfe3ec;
 
+  /* Control state washes */
+  --control-hover-bg: rgba(43, 48, 64, 0.06);
+
+  /* Elevation — tinted to the cool slate of the light canvas, never black. */
+  --elev-1: 0 1px 3px rgba(35, 48, 90, 0.1);
+  --elev-2: 0 4px 16px rgba(35, 48, 90, 0.13);
+  --elev-3: 0 12px 32px rgba(35, 48, 90, 0.17);
+
   /* Status — same hues, retuned for contrast on a light surface. */
   --status-connected: #1f9d46;
   --status-connected-bg: rgba(31, 157, 70, 0.12);
+  --status-connected-border: rgba(31, 157, 70, 0.38);
   --status-connecting: #6b7690;
   --status-connecting-bg: rgba(107, 118, 144, 0.08);
   --status-disconnected: #d43a3a;
   --status-disconnected-bg: rgba(212, 58, 58, 0.12);
+  --status-disconnected-border: rgba(212, 58, 58, 0.38);
 
   /* Node chrome — the dark theme's glow reads as a light bloom; on white the
      equivalent depth cue is a soft neutral drop shadow instead. */
@@ -142,14 +208,16 @@
      doesn't overpower a white node. */
   --icon-chip-glow: 0 0 6px currentColor;
 
-  /* Group chrome — bright tint (per spec) using the light accent. */
-  --group-bg: rgba(74, 125, 214, 0.06);
-  --group-accent-bg: rgba(74, 125, 214, 0.1);
+  /* Group chrome — NEUTRAL, very light tint (DGC-94 audit: the old blue fill
+     was saturated enough to read as a selected/marked region on white). */
+  --group-bg: rgba(70, 80, 110, 0.035);
+  --group-accent-bg: rgba(74, 125, 214, 0.06);
+  --group-title-hover: rgba(74, 125, 214, 0.08);
 
   --group-depth-0-tint: transparent;
-  --group-depth-1-tint: rgba(74, 125, 214, 0.05);
-  --group-depth-2-tint: rgba(74, 125, 214, 0.09);
-  --group-depth-3-tint: rgba(74, 125, 214, 0.13);
+  --group-depth-1-tint: rgba(70, 80, 110, 0.03);
+  --group-depth-2-tint: rgba(70, 80, 110, 0.055);
+  --group-depth-3-tint: rgba(70, 80, 110, 0.08);
 
   /* Hover feedback */
   --node-hover-border: #aab4cc;
@@ -160,6 +228,11 @@
   --accent-soft-bg: rgba(74, 125, 214, 0.12);
   --accent-soft-bg-hover: rgba(74, 125, 214, 0.2);
   --controls-filter: none;
+
+  /* MiniMap — light chrome: white translucent map, soft slate mask. */
+  --minimap-bg: rgba(255, 255, 255, 0.9);
+  --minimap-mask: rgba(213, 219, 234, 0.55);
+  --minimap-node: rgba(74, 125, 214, 0.35);
 
   /* Diff overlay — same hues retuned for contrast on a light surface (a softer
      glow, darker ink so the ring/stroke reads on white). */

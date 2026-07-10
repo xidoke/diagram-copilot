@@ -126,6 +126,9 @@ importers:
       html-to-image:
         specifier: ^1.11.13
         version: 1.11.13
+      lucide-static:
+        specifier: ^1.22.0
+        version: 1.22.0
       monaco-editor:
         specifier: ^0.52.0
         version: 0.52.2

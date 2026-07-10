@@ -24,7 +24,7 @@ export function statusPillContent(status: ConnectionStatus): StatusPillContent {
     case "connecting":
       return { tone: "connecting", icon: "○", text: "connecting…" };
     case "disconnected":
-      return { tone: "disconnected", icon: "⏸", text: "disconnected — reconnecting" };
+      return { tone: "disconnected", icon: "◌", text: "disconnected · reconnecting" };
   }
 }
 

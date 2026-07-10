@@ -14,6 +14,7 @@
     "@monaco-editor/react": "^4.7.0",
     "@xyflow/react": "^12",
     "html-to-image": "^1.11.13",
+    "lucide-static": "^1.22.0",
     "monaco-editor": "^0.52.0",
     "react": "^18",
     "react-dom": "^18",

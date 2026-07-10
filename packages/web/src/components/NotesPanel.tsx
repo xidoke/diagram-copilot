@@ -16,6 +16,7 @@
  * unit-testable in the project's node-only vitest setup.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { NotebookPen } from "lucide-static";
 import { makeNotesSaver, type NotesSaver } from "./notesSync.js";
 import "./notes.css";
 
@@ -150,9 +151,12 @@ export function NotesPanel({ open, onToggle, name }: NotesPanelProps) {
         aria-label={open ? "Close notes (⌘I)" : "Open notes (⌘I)"}
         title={open ? "Close notes · ⌘I" : "Open notes · ⌘I"}
       >
-        <span className="notes-toggle__glyph" aria-hidden="true">
-          📝
-        </span>
+        {/* Same lucide family as the toolbar (DGC-94) — no emoji chrome. */}
+        <span
+          className="notes-toggle__glyph"
+          aria-hidden="true"
+          dangerouslySetInnerHTML={{ __html: NotebookPen }}
+        />
         <span className="notes-toggle__text" aria-hidden="true">
           NOTES
         </span>

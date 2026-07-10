@@ -1,7 +1,7 @@
 /**
- * Floating export menu (DGC-48 / T28) — 📤 trigger button docked top-right,
- * 8px below the layout Toolbar (own floating chrome; Toolbar.tsx is owned by
- * another workstream and isn't touched here). Click opens a small menu:
+ * Export menu (DGC-48 / T28) — trigger button rendered inside the Toolbar's
+ * View cluster (DGC-94, passed in as a slot from App.tsx); the dropdown hangs
+ * below the cluster. Click opens a small menu:
  * PNG, PNG (transparent), SVG, Copy PNG, Save to workspace exports (T29 /
  * DGC-49 — the one action that round-trips to the server's `POST /export`).
  *
@@ -19,6 +19,7 @@ import {
   exportSvg,
   saveToWorkspaceExports,
 } from "../render/export.js";
+import { TOOLBAR_ICONS, ToolbarIcon } from "./toolbarIcons.js";
 
 export interface ExportMenuProps {
   /** Active diagram name — used to build the downloaded filename. */
@@ -110,13 +111,14 @@ export function ExportMenu({ name, version }: ExportMenuProps) {
     <div className="export-menu" ref={containerRef}>
       <button
         type="button"
-        className="export-menu__trigger"
+        className={`toolbar-btn export-menu__trigger${open ? " toolbar-btn--active" : ""}`}
         title="Export diagram"
+        aria-label="Export diagram"
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
-        📤
+        <ToolbarIcon svg={TOOLBAR_ICONS.export} />
       </button>
       {open && (
         <div className="export-menu__panel" role="menu">
