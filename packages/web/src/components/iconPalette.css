@@ -65,6 +65,15 @@
   overflow-y: auto;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(62px, 1fr));
+  /* Reserve each row's content height explicitly. The cells are scroll
+     containers (`overflow: hidden`, for the ellipsised name), so their
+     min-size is 0; with the default `grid-auto-rows: auto` that lets every
+     row collapse toward 0 once the grid overflows its capped height — which
+     happens as soon as enough icons are present (e.g. installing the 303-icon
+     AWS pack, DGC-99). Collapsed rows then clip the 24px glyph into a thin
+     sliver. `min-content` pins each row to its real content height so glyphs
+     always render full-size, whether the grid scrolls or not. */
+  grid-auto-rows: min-content;
   gap: 4px;
   padding-top: 8px;
 }
