@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Handle, NodeResizer, Position, type NodeProps } from "@xyflow/react";
-import { ArchGroup, ArchNode } from "../../src/render/ArchNode.js";
+import { ArchGroup, ArchNode, CollapseToggle } from "../../src/render/ArchNode.js";
 import type { ArchNodeData } from "../../src/render/toFlow.js";
 
 /**
@@ -88,5 +88,41 @@ describe("ArchNode", () => {
   it("still renders target + source handles (regression)", () => {
     const kinds = handles(renderNode({})).map((h) => h.props.type).sort();
     expect(kinds).toEqual(["source", "target"]);
+  });
+});
+
+/** Collapse/expand affordances (DGC-67). */
+const toggles = (el: unknown) => collect(el).filter((n) => n.type === CollapseToggle);
+
+describe("collapse/expand toggle (DGC-67)", () => {
+  it("puts a ▾ collapse toggle on the group title band", () => {
+    const group = ArchGroup({
+      id: "vpc",
+      data: { label: "VPC", direction: "right" },
+    } as unknown as NodeProps);
+    const ts = toggles(group);
+    expect(ts).toHaveLength(1);
+    expect(ts[0].props).toEqual({ id: "vpc", collapsed: false });
+    // It must sit INSIDE the title band (the group's drag handle), so the
+    // click target is on the interactive strip, not the pass-through body.
+    const band = collect(group).find((n) => n.props?.className === "arch-group__title");
+    expect(collect(band).some((n) => n.type === CollapseToggle)).toBe(true);
+  });
+
+  it("renders a plain leaf with no toggle and no collapsed styling", () => {
+    const node = ArchNode({ id: "api", data: { label: "API", direction: "right" } } as unknown as NodeProps);
+    expect(toggles(node)).toHaveLength(0);
+    expect((node as any).props.className).not.toContain("arch-node--collapsed");
+  });
+
+  it("renders a collapsed representative with a ▸ expand toggle + collapsed class", () => {
+    const node = ArchNode({
+      id: "vpc",
+      data: { label: "VPC (3)", direction: "right", collapsed: true },
+    } as unknown as NodeProps);
+    const ts = toggles(node);
+    expect(ts).toHaveLength(1);
+    expect(ts[0].props).toEqual({ id: "vpc", collapsed: true });
+    expect((node as any).props.className).toContain("arch-node--collapsed");
   });
 });
