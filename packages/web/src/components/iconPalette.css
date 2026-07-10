@@ -1,25 +1,25 @@
 /*
- * Icon palette (DGC-77 / T-IPAL) — the 🎨 trigger lives in the Toolbar; the
- * panel + toast are portaled to <body> so they escape the toolbar's stacking
- * context and sit above the other top-right chrome (the export menu docks
- * directly beneath the toolbar). Same translucent theme-B chrome + `--…`
- * tokens as the rest of the floating UI, so it themes (dark / light) for free.
+ * Icon palette (DGC-77 / T-IPAL) — the palette trigger lives in the Toolbar's
+ * View cluster; the panel + toast are portaled to <body> so they escape the
+ * toolbar's stacking context and sit above the other top-right chrome. Same
+ * translucent chrome + `--…` tokens as the rest of the floating UI, so it
+ * themes (dark / light) for free.
  */
 .icon-palette__panel {
   position: fixed;
-  top: 54px;
-  right: 10px;
+  top: 52px;
+  right: var(--space-3);
   z-index: 40;
-  width: min(400px, calc(100vw - 20px));
+  width: min(400px, calc(100vw - 24px));
   max-height: min(60vh, 520px);
   display: flex;
   flex-direction: column;
-  background: var(--panel-translucent);
+  background: var(--surface-overlay);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 8px;
-  backdrop-filter: blur(8px);
-  box-shadow: var(--node-glow);
+  border-radius: var(--radius);
+  padding: var(--space-2);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--elev-2);
 }
 
 .icon-palette__head {

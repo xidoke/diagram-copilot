@@ -430,7 +430,7 @@ export function Picker({ workspace, name, version }: PickerProps) {
     }
 
     return (
-      <div key={target} className="picker__row" onContextMenu={(event) => {
+      <div key={target} className={`picker__row${isStep ? " picker__row--step" : ""}`} onContextMenu={(event) => {
         if (!existing.has(target)) return;
         event.preventDefault();
         setConfirmDelete(null);

@@ -834,8 +834,11 @@ function DiagramCanvas() {
         onChange={setPrefs}
         onResetLayout={diagramName ? handleResetLayout : undefined}
         onPresent={() => setPresentOn(true)}
-      />
-      <ExportMenu name={lastDiagram?.name ?? "diagram"} version={lastDiagram?.version ?? 0} />
+      >
+        {/* Export lives in the toolbar's View cluster (DGC-94) — passed as a
+            slot so it keeps its own props/dropdown state. */}
+        <ExportMenu name={lastDiagram?.name ?? "diagram"} version={lastDiagram?.version ?? 0} />
+      </Toolbar>
       {showError && lastError && (
         <div className="error-banner">
           <b>{lastError.name}</b>:{" "}
@@ -910,9 +913,11 @@ function DiagramCanvas() {
             className="app-minimap"
             pannable
             zoomable
-            nodeColor="rgba(74, 163, 255, 0.35)"
-            maskColor="rgba(5, 8, 14, 0.75)"
-            bgColor="var(--panel-translucent)"
+            // Theme-aware (DGC-94): tokens flip with data-theme, so the map no
+            // longer renders as a dark framed box on the light canvas.
+            nodeColor="var(--minimap-node)"
+            maskColor="var(--minimap-mask)"
+            bgColor="var(--minimap-bg)"
           />
         )}
       </ReactFlow>

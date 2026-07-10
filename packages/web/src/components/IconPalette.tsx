@@ -1,8 +1,8 @@
 /**
  * Icon palette (DGC-77 / T-IPAL) — browse the whole @diagram-copilot/icons set
- * without leaving the app. The 🎨 trigger lives in the Toolbar (next to ▶
- * present); clicking it opens a searchable grid of every icon rendered with its
- * real glyph. Clicking an icon inserts its DSL token — `[icon: <id>]` — at the
+ * without leaving the app. The palette trigger lives in the Toolbar's View
+ * cluster (next to present); clicking it opens a searchable grid of every icon
+ * rendered with its real glyph. Clicking an icon inserts its DSL token — `[icon: <id>]` — at the
  * Monaco cursor when the DSL drawer is open (T-VE3 / DGC-80, via the
  * `drawerInsertRegistry` module-level registry); when the drawer is closed
  * (nothing registered) it falls back to copying the token to the clipboard,
@@ -27,6 +27,7 @@ import { createPortal } from "react-dom";
 import { ALIASES, getIcon, listIcons, type IconSource } from "@diagram-copilot/icons";
 import { normalize } from "./SearchBox.js";
 import { insertIntoDrawer } from "./drawerInsertRegistry.js";
+import { TOOLBAR_ICONS, ToolbarIcon } from "./toolbarIcons.js";
 import "./iconPalette.css";
 
 /** A single browsable icon: enough to render, search, tooltip, and copy it. */
@@ -212,7 +213,7 @@ export function IconPalette() {
         aria-expanded={open}
         onClick={() => (open ? close() : setOpen(true))}
       >
-        🎨
+        <ToolbarIcon svg={TOOLBAR_ICONS.palette} />
       </button>
       {open &&
         createPortal(

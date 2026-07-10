@@ -21,8 +21,8 @@ describe("statusPillContent", () => {
   it("renders the disconnected state (theme B, muted red)", () => {
     expect(statusPillContent("disconnected")).toEqual({
       tone: "disconnected",
-      icon: "⏸",
-      text: "disconnected — reconnecting",
+      icon: "◌",
+      text: "disconnected · reconnecting",
     });
   });
 });
