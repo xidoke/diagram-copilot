@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { registerIconPack, unregisterIconPack } from "@diagram-copilot/icons";
 import { buildIconEntries, filterIcons, handleIconClick, type IconEntry } from "../../src/components/IconPalette";
 
 /** A tiny hand-built set so the matching semantics are asserted in isolation
@@ -64,6 +65,39 @@ describe("buildIconEntries", () => {
     for (const entry of buildIconEntries()) {
       expect(entry.svg).toMatch(/<svg/);
     }
+  });
+});
+
+/** Opt-in icon packs in the palette (DGC-99). */
+describe("buildIconEntries with a registered pack", () => {
+  afterEach(() => {
+    unregisterIconPack("testaws");
+  });
+
+  it("shows no pack entries when no pack is registered", () => {
+    expect(buildIconEntries().every((entry) => entry.pack === undefined)).toBe(true);
+  });
+
+  it("includes pack icons tagged with their namespace, searchable via id and alias", () => {
+    registerIconPack({
+      namespace: "testaws",
+      title: "Test AWS",
+      license: "test",
+      icons: { lambda: { title: "AWS Lambda", svg: "<svg/>" } },
+      aliases: { fn: "lambda" },
+    });
+    const entries = buildIconEntries();
+    const lambda = entries.find((entry) => entry.id === "testaws:lambda");
+    expect(lambda).toBeDefined();
+    expect(lambda?.pack).toBe("testaws");
+    expect(lambda?.source).toBe("pack");
+    // Explicit pack alias shows up; the icon's own bare name is not repeated
+    // as an alias (it's already visible in the namespaced id).
+    expect(lambda?.aliases).toContain("fn");
+    expect(lambda?.aliases).not.toContain("lambda");
+    // Searchable by bare name and by alias.
+    expect(filterIcons(entries, "lambda").map((entry) => entry.id)).toContain("testaws:lambda");
+    expect(filterIcons(entries, "fn").map((entry) => entry.id)).toContain("testaws:lambda");
   });
 });
 

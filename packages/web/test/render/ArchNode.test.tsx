@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { Handle, NodeResizer, Position, type NodeProps } from "@xyflow/react";
-import { ArchGroup, ArchNode, CollapseToggle } from "../../src/render/ArchNode.js";
+import { registerIconPack, unregisterIconPack } from "@diagram-copilot/icons";
+import { ArchGroup, ArchNode, CollapseToggle, IconChip } from "../../src/render/ArchNode.js";
 import type { ArchNodeData } from "../../src/render/toFlow.js";
 
 /**
@@ -75,12 +76,42 @@ describe("ArchGroup", () => {
   });
 
   it("renders a small icon chip beside the label when the group has an icon", () => {
-    const withIcon = collect(renderGroup({ icon: "server" })).find((n) => n.props?.className === "arch-group-chip");
-    expect(withIcon).toBeDefined();
-    expect(typeof withIcon.props.dangerouslySetInnerHTML.__html).toBe("string");
-    expect(withIcon.props.dangerouslySetInnerHTML.__html.length).toBeGreaterThan(0);
+    const chipEl = collect(renderGroup({ icon: "server" })).find((n) => n.type === IconChip);
+    expect(chipEl).toBeDefined();
+    expect(chipEl.props.className).toBe("arch-group-chip");
+    // IconChip is hook-free — call it as a plain function to inspect the span.
+    const span = IconChip(chipEl.props) as any;
+    expect(typeof span.props.dangerouslySetInnerHTML.__html).toBe("string");
+    expect(span.props.dangerouslySetInnerHTML.__html.length).toBeGreaterThan(0);
     // No chip when there's no icon.
-    expect(collect(renderGroup({})).find((n) => n.props?.className === "arch-group-chip")).toBeUndefined();
+    expect(collect(renderGroup({})).find((n) => n.type === IconChip)).toBeUndefined();
+  });
+});
+
+/** Opt-in pack glyph rendering (DGC-99): verbatim artwork, no tint/glow. */
+describe("IconChip", () => {
+  afterEach(() => {
+    unregisterIconPack("testaws");
+  });
+
+  it("tints baked open-set icons with the node accent", () => {
+    const span = IconChip({ icon: "server", accent: "#123456", className: "arch-node-chip" }) as any;
+    expect(span.props.className).toBe("arch-node-chip");
+    expect(span.props.style).toEqual({ color: "#123456" });
+    expect(span.props.dangerouslySetInnerHTML.__html).toContain("currentColor");
+  });
+
+  it("renders pack glyphs verbatim: --pack modifier, no tint, baked colors kept", () => {
+    registerIconPack({
+      namespace: "testaws",
+      title: "Test AWS",
+      license: "test",
+      icons: { s3: { title: "Amazon S3", svg: '<svg viewBox="0 0 64 64"><rect fill="#7AA116"/></svg>' } },
+    });
+    const span = IconChip({ icon: "testaws:s3", accent: "#123456", className: "arch-node-chip" }) as any;
+    expect(span.props.className).toBe("arch-node-chip arch-node-chip--pack");
+    expect(span.props.style).toBeUndefined();
+    expect(span.props.dangerouslySetInnerHTML.__html).toContain('fill="#7AA116"');
   });
 });
 

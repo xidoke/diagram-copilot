@@ -29,6 +29,7 @@ import { createSnapshotBroker } from "./mcp/snapshot-broker.js";
 import { createHeadlessRenderer } from "./headless/renderer.js";
 import { createHistoryStore } from "./history/store.js";
 import { createUndoApiHandler } from "./history/http.js";
+import { loadIconPacksFromDisk } from "./icon-packs.js";
 import { buildWelcomeMessages, createWorkspaceWatcher, type WorkspaceWatcher } from "./workspace/watcher.js";
 
 /** Fixed default port. Kept in sync with the MCP endpoint registration. */
@@ -174,6 +175,13 @@ async function main(): Promise<void> {
   console.log(`[server] workspace: ${options.workspace}`);
   console.log(`[server] export dir: ${options.exportDir}`);
   console.log(`[server] export roots: ${[options.exportDir, ...options.exportRoots].join(", ")}`);
+
+  // Opt-in icon packs (DGC-99): register any locally-generated vendor packs
+  // (`pnpm icons:aws`) so list_icons / [icon: aws:*] resolve on this server.
+  const iconPacks = loadIconPacksFromDisk();
+  if (iconPacks.length > 0) {
+    console.log(`[server] icon packs: ${iconPacks.map((p) => `${p.namespace} (${p.count} icons)`).join(", ")}`);
+  }
 
   // `getWelcome` is wired to the server at creation time, but the watcher it
   // reads from is only created after `start()` succeeds (no point scanning

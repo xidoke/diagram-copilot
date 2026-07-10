@@ -123,6 +123,32 @@ export function CollapseToggle({ id, collapsed }: { id: string; collapsed: boole
   );
 }
 
+/**
+ * Icon chip shared by nodes and groups. Baked open-set icons (lucide /
+ * simple-icons) are `currentColor` artwork, so they take the accent tint +
+ * soft glow. Opt-in PACK glyphs (DGC-99 — official vendor artwork, e.g. AWS
+ * Architecture Icons installed via `pnpm icons:aws`) carry their own baked
+ * colors and must render verbatim (vendor terms forbid altering them): the
+ * `--pack` modifier turns the tint/glow off so the glyph stays untouched
+ * inside the same neutral chip frame, at the same chip size.
+ */
+export function IconChip({ icon, accent, className }: { icon: string; accent: string; className: string }) {
+  const meta = getIcon(icon);
+  const isPack = meta.source === "pack";
+  return (
+    <span
+      className={isPack ? `${className} ${className}--pack` : className}
+      style={isPack ? undefined : { color: accent }}
+      // Icon markup comes from the trusted @diagram-copilot/icons registry:
+      // artwork baked in at build time (lucide-static / simple-icons) or a
+      // pack the user generated locally on purpose (`pnpm icons:aws`) — no
+      // user or network input reaches this string, so injecting it via
+      // dangerouslySetInnerHTML is safe here.
+      dangerouslySetInnerHTML={{ __html: meta.svg }}
+    />
+  );
+}
+
 /** Leaf node — theme B "dark blueprint": optional icon chip + label. */
 export function ArchNode({ id, data }: NodeProps) {
   const { label, direction, icon, color, collapsed } = data as ArchNodeData;
@@ -147,17 +173,7 @@ export function ArchNode({ id, data }: NodeProps) {
     <div className={className} style={style}>
       <Handle type="target" position={pos.target} className="arch-handle" />
       {collapsed === true && <CollapseToggle id={id} collapsed />}
-      {icon !== undefined && (
-        <span
-          className="arch-node-chip"
-          style={{ color: accent }}
-          // Icon markup is baked into the trusted @diagram-copilot/icons
-          // workspace package at build time (lucide-static / simple-icons
-          // artwork, no user or network input reaches this string), so
-          // injecting it via dangerouslySetInnerHTML is safe here.
-          dangerouslySetInnerHTML={{ __html: getIcon(icon).svg }}
-        />
-      )}
+      {icon !== undefined && <IconChip icon={icon} accent={accent} className="arch-node-chip" />}
       <EditableLabel id={id} label={label} className="arch-node-label" />
       <Handle type="source" position={pos.source} className="arch-handle" />
     </div>
@@ -214,15 +230,7 @@ export function ArchGroup({ id, data, selected }: NodeProps) {
             the title band (already pointer-interactive) as an explicit button —
             double-click stays reserved for rename. */}
         <CollapseToggle id={id} collapsed={false} />
-        {icon !== undefined && (
-          <span
-            className="arch-group-chip"
-            style={{ color: accent }}
-            // Icon markup comes from the trusted @diagram-copilot/icons package
-            // (see ArchNode), so injecting it here is safe.
-            dangerouslySetInnerHTML={{ __html: getIcon(icon).svg }}
-          />
-        )}
+        {icon !== undefined && <IconChip icon={icon} accent={accent} className="arch-group-chip" />}
         <EditableLabel id={id} label={label} className="arch-group-label" />
       </div>
       <Handle type="source" position={pos.source} className="arch-handle" />

@@ -12,7 +12,10 @@ import { z } from "zod";
 const HIGHLIGHTED_ALIASES = ["postgres", "kafka", "k8s", "db", "lb", "cdn", "queue", "cache"] as const;
 
 function formatIcon(icon: IconMeta): string {
-  return `${icon.id} — ${icon.title} (${icon.source})`;
+  // Pack icons (opt-in vendor sets, DGC-99) credit their pack namespace —
+  // e.g. `aws:dynamodb — Amazon DynamoDB (aws pack)`.
+  const source = icon.source === "pack" && icon.pack !== undefined ? `${icon.pack} pack` : icon.source;
+  return `${icon.id} — ${icon.title} (${source})`;
 }
 
 /** Builds the `list_icons` response text for a given (already-filtered) result set. */

@@ -16,3 +16,8 @@ build/
 # anchored: chỉ match ở repo root, không match packages/*/src/workspace/
 /workspace/
 /videos/
+
+# opt-in icon packs (DGC-99): vendor artwork generated locally by
+# `pnpm icons:aws` — licensed for USE in diagrams, not for redistribution,
+# so it never enters the repo.
+/packages/icons/packs/

@@ -1,5 +1,8 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+// Register opt-in icon packs (DGC-99) BEFORE the app renders, so the first
+// canvas paint already resolves pack ids like `aws:s3`.
+import "./iconPacks";
 import App from "./App";
 
 const rootElement = document.getElementById("root");

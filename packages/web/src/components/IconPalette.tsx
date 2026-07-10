@@ -24,7 +24,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ALIASES, getIcon, listIcons, type IconSource } from "@diagram-copilot/icons";
+import { getIcon, listAliases, listIcons, type IconSource } from "@diagram-copilot/icons";
 import { normalize } from "./SearchBox.js";
 import { insertIntoDrawer } from "./drawerInsertRegistry.js";
 import { TOOLBAR_ICONS, ToolbarIcon } from "./toolbarIcons.js";
@@ -42,6 +42,8 @@ export interface IconEntry {
   source: IconSource;
   /** Aliases that resolve to this icon — searchable and shown in the tooltip. */
   aliases: string[];
+  /** Pack namespace (e.g. "aws") for opt-in vendor icons — shown as a tag. */
+  pack?: string;
   /** True only for the trailing soft-fallback entry (the generic box glyph). */
   fallback?: boolean;
 }
@@ -61,10 +63,14 @@ const FALLBACK_ID = "fallback";
 /** How long the "copied …" toast stays visible before auto-dismissing. */
 const TOAST_MS = 1500;
 
-/** Invert the alias table into canonical-id → the aliases pointing at it. */
+/** Invert the live alias table (built-ins + registered packs, see
+ *  `listAliases`) into canonical-id → the aliases pointing at it. */
 function aliasesByCanonical(): Record<string, string[]> {
   const map: Record<string, string[]> = {};
-  for (const [alias, target] of Object.entries(ALIASES)) {
+  for (const [alias, target] of Object.entries(listAliases())) {
+    // A pack icon's own bare name doubles as an alias (`lambda` →
+    // `aws:lambda`) — useful for resolution, redundant in a tooltip.
+    if (target.endsWith(`:${alias}`)) continue;
     (map[target] ??= []).push(alias);
   }
   return map;
@@ -83,6 +89,7 @@ export function buildIconEntries(): IconEntry[] {
     svg: icon.svg,
     source: icon.source,
     aliases: aliasMap[icon.id] ?? [],
+    ...(icon.pack !== undefined ? { pack: icon.pack } : {}),
   }));
   const fb = getIcon(FALLBACK_ID);
   entries.push({ id: fb.id, title: fb.title, svg: fb.svg, source: fb.source, aliases: [], fallback: true });
@@ -261,6 +268,7 @@ export function IconPalette() {
                     />
                     <span className="icon-palette__name">{entry.id}</span>
                     {entry.fallback && <span className="icon-palette__tag">fallback</span>}
+                    {entry.pack !== undefined && <span className="icon-palette__tag">{entry.pack}</span>}
                   </button>
                 ))}
               </div>
