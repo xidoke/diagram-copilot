@@ -88,6 +88,9 @@ Valid color tokens (anything else falls back to the default theme accent):
 Icons: call the list_icons tool to browse ids/aliases before using [icon: ...].
 An id that list_icons doesn't know still renders (generic box fallback), so
 prefer a real id/alias for a recognizable diagram.
+Optional vendor packs (installed via pnpm icons:aws) add namespaced official
+icons like [icon: aws:s3] / [icon: aws:lambda] plus bare aliases (s3, lambda,
+dynamodb, ...) — they appear in list_icons only when the pack is installed.
 
 Full example (direction, two-tier nested groups, icons, colors, one-to-many,
 comments, and an edge that crosses a group boundary):

@@ -1,9 +1,9 @@
 # Icon attribution
 
-`@diagram-copilot/icons` ships **no hand-drawn artwork** and **no official
-AWS / GCP / Azure icons**. Every icon is baked at build time from one of
-two open npm packages, chosen specifically because their licenses are
-unambiguous for embedding and redistributing in this project:
+`@diagram-copilot/icons` ships **no hand-drawn artwork** and **no committed
+AWS / GCP / Azure icons**. Every committed icon is baked at build time from
+one of two open npm packages, chosen specifically because their licenses
+are unambiguous for embedding and redistributing in this project:
 
 | Package | Version | License | What it provides |
 |---|---|---|---|
@@ -13,6 +13,19 @@ unambiguous for embedding and redistributing in this project:
 A generic `box` icon (from `lucide-static`) also doubles as the built-in
 **fallback** artwork returned by `getIcon()` for any id that isn't
 recognized — see `src/registry.ts`.
+
+## Opt-in vendor packs (DGC-99) — never committed
+
+Official vendor icon sets whose terms allow **use** in architecture
+diagrams but not redistribution/alteration are supported as local,
+gitignored packs under `packs/` (see `src/packs.ts`):
+
+| Pack | Install | Namespace | Terms honored |
+|---|---|---|---|
+| [AWS Architecture Icons](https://aws.amazon.com/architecture/icons/) | `pnpm icons:aws` | `aws:` (e.g. `[icon: aws:s3]`, `[icon: aws:lambda]`) | AWS permits customers/partners to use the assets to create architecture diagrams; the [AWS Trademark Guidelines](https://aws.amazon.com/trademark-guidelines/) forbid altering the artwork. The script downloads the official asset package **directly from AWS to your machine**, keeps every glyph verbatim (no recolor/re-theme), and writes a per-pack `packs/aws.ATTRIBUTION.md`. Nothing enters the repo. |
+
+Pack resolution never shadows a built-in id, and a namespaced id whose
+pack isn't installed falls back to the generic box like any unknown id.
 
 ## Trademark note (simple-icons logos)
 
