@@ -5,6 +5,7 @@ Format theo [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning
 ## [Unreleased]
 
 ### Added
+- v2.0 Phase A: Group collapse/expand ▸/▾ — thu group thành node compact, edges gộp có đếm ("label ×N"), nested giữ trạng thái, nhớ qua reload; sơ đồ 72 node thu về 1 màn hình (DGC-67/F7).
 - v2.0 Phase A: Compare mode ⧉ — canvas chia đôi so 2 step cạnh nhau, trái highlight phần bị xóa (step trước), phải phần thêm (step hiện tại), ←/→ trượt theo cặp, Esc thoát (DGC-88).
 - Visual editing v1.2: double-click edge sửa label bằng inline input (Enter/Esc, trống = bỏ label — một op `set_attr` giữ nguyên vị trí dòng DSL), Alt-drag connect dùng cùng input thay `window.prompt`; node thả từ palette nằm đúng điểm thả qua layout override, reset layout đưa về ELK (DGC-85, DGC-86).
 - Visual editing v1.2: context menu right-click (đổi icon/màu, xóa — group xóa có confirm), Cmd+D duplicate, multi-select Shift+drag marquee + Shift-click (DGC-20).

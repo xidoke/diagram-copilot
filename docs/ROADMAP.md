@@ -146,7 +146,7 @@ Publish sơ đồ thành web page tĩnh share được · template/community gal
 | v0.5 Learning Pack | ✅ 2026-07-02 | tag `v0.5` — steps nav, present mode ▶, notes ⌘I, diff_diagram, templates, perf 60-node=190ms |
 | v1.0 Prod-grade | ✅ 2026-07-02 | tag `v1.0` 🚀 — CI xanh, node dist standalone, README GIF, DSL.md, MIT (Đô duyệt), eval 10/10 first-try. npm publish = quyết định riêng của Đô |
 | v1.2 Visual Editing | ✅ 2026-07-10 | DGC-17/T-VE1/2/3/T-IPAL + DGC-18/19/20/85/86/87 merged (~1490 test). Đô duyệt contract DGC-87 + gật đóng release; UX issue phát hiện sau chảy vào v1.3 intake |
-| v2.0 SD Studio | 🔶 Phase A mở 2026-07-10 | DGC-88 compare mode (bay, Fable). Kế: F7 collapse |
+| v2.0 SD Studio | 🔶 Phase A ✅ 2026-07-10 | DGC-88 compare mode + DGC-67 collapse merged. Kế: Phase B C4 zoom (cần đề xuất grammar → Đô) |
 | v1.3 Copilot Hardening | 🔄 rolling | DGC-81/82/84 shipped 2026-07-10 (dogfood Chợ Phiên). Intake luôn mở |
 | v1.1 More Canvases | ⏸ parked | Chờ tín hiệu nhu cầu thật |
 
