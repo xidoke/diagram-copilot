@@ -29,8 +29,9 @@ import {
   getSmoothStepPath,
   type EdgeProps,
 } from "@xyflow/react";
-import type { Point, PositionedEdgeSection } from "@diagram-copilot/layout";
+import { EDGE_LABEL_MAX_WIDTH, type Point, type PositionedEdgeSection } from "@diagram-copilot/layout";
 import { ELK_EDGE_RADIUS, buildElkPath, edgeLabelAnchor } from "./elkPath.js";
+import { tooltipFor } from "./labelTooltip.js";
 
 /** Edge `type` key registered in React Flow's `edgeTypes`. */
 export const ELK_EDGE_TYPE = "elk";
@@ -46,6 +47,12 @@ export interface ElkEdgeData extends Record<string, unknown> {
   staticTarget?: Point;
   /** True when either endpoint has a saved manual override (stale ELK route). */
   dirtyEndpoints?: boolean;
+  /**
+   * Hover association (DGC-100): set by `applyHoverToEdges` when this edge —
+   * or a node it touches — is under the pointer. Accents the path and lifts
+   * the label so a floating label maps back to its line at a glance.
+   */
+  highlighted?: boolean;
 }
 
 /** SVG marker id for the edge arrowhead (defined by `ElkEdgeMarkerDefs`). */
@@ -102,16 +109,43 @@ export function ElkEdgeMarkerDefs() {
   );
 }
 
-/** Shared label chrome: centered on `(x, y)`, full text in a hover tooltip. */
-function ElkEdgeLabel({ x, y, label }: { x: number; y: number; label: EdgeProps["label"] }) {
+/**
+ * Shared label chrome: centered on `(x, y)`; text wraps to two lines at the
+ * same width cap ELK reserved room for (DGC-100), then ellipsizes. Full text
+ * lives in the native `title` plus, for genuinely long labels, the styled
+ * `[data-full-label]` CSS tooltip. `data-edge-id` feeds App's hover
+ * delegation — the div lives in `EdgeLabelRenderer`'s HTML layer, outside the
+ * edge's SVG group, so React Flow's own edge hover events never see it.
+ * `highlighted` mirrors the path accent so label and line light up together.
+ */
+function ElkEdgeLabel({
+  id,
+  x,
+  y,
+  label,
+  highlighted,
+}: {
+  id: string;
+  x: number;
+  y: number;
+  label: EdgeProps["label"];
+  highlighted: boolean;
+}) {
+  const text = typeof label === "string" ? label : undefined;
+  const tooltip = text !== undefined ? tooltipFor(text, "edge") : undefined;
   return (
     <EdgeLabelRenderer>
       <div
-        className="elk-edge-label"
-        title={typeof label === "string" ? label : undefined}
-        style={{ transform: `translate(-50%, -50%) translate(${x}px, ${y}px)` }}
+        className={highlighted ? "elk-edge-label elk-edge-label--hl" : "elk-edge-label"}
+        data-edge-id={id}
+        {...(tooltip !== undefined ? { "data-full-label": tooltip } : {})}
+        title={text}
+        style={{
+          transform: `translate(-50%, -50%) translate(${x}px, ${y}px)`,
+          maxWidth: EDGE_LABEL_MAX_WIDTH,
+        }}
       >
-        {label}
+        <span className="elk-edge-label__text">{label}</span>
       </div>
     </EdgeLabelRenderer>
   );
@@ -137,6 +171,12 @@ export function ElkEdge(props: EdgeProps) {
   const sections = d?.sections ?? [];
   const path = buildElkPath(sections);
   const hasLabel = label != null && label !== "";
+  const highlighted = d?.highlighted === true;
+  // Accent + thicker stroke while hover-associated (DGC-100); BaseEdge merges
+  // this onto the `.react-flow__edge-path` element itself, so the diff
+  // overlay's stroke color (a more specific `.react-flow__edge.diff-* path`
+  // rule) still wins where both apply.
+  const pathClass = highlighted ? "elk-edge-path--hl" : undefined;
 
   const liveHandles = [sourceX, sourceY, targetX, targetY].every(Number.isFinite);
   const anchorsMatch =
@@ -156,8 +196,10 @@ export function ElkEdge(props: EdgeProps) {
       : null;
     return (
       <>
-        <BaseEdge id={id} path={path} markerEnd={`url(#${ELK_ARROW_ID})`} />
-        {labelXY && <ElkEdgeLabel x={labelXY.x} y={labelXY.y} label={label} />}
+        <BaseEdge id={id} path={path} className={pathClass} markerEnd={`url(#${ELK_ARROW_ID})`} />
+        {labelXY && (
+          <ElkEdgeLabel id={id} x={labelXY.x} y={labelXY.y} label={label} highlighted={highlighted} />
+        )}
       </>
     );
   }
@@ -177,8 +219,10 @@ export function ElkEdge(props: EdgeProps) {
   });
   return (
     <>
-      <BaseEdge id={id} path={dynamicPath} markerEnd={`url(#${ELK_ARROW_ID})`} />
-      {hasLabel && <ElkEdgeLabel x={labelX} y={labelY} label={label} />}
+      <BaseEdge id={id} path={dynamicPath} className={pathClass} markerEnd={`url(#${ELK_ARROW_ID})`} />
+      {hasLabel && (
+        <ElkEdgeLabel id={id} x={labelX} y={labelY} label={label} highlighted={highlighted} />
+      )}
     </>
   );
 }

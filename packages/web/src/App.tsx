@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import {
   applyEdgeChanges,
   applyNodeChanges,
@@ -73,6 +81,11 @@ import {
   type NodeGeom,
 } from "./render/reparent.js";
 import { applyDiffToEdges, applyDiffToNodes, type DiffOverlay } from "./render/diffOverlay.js";
+import {
+  applyHoverToEdges,
+  edgeLabelIdFromEventTarget,
+  type HoverTarget,
+} from "./render/hoverHighlight.js";
 import {
   collapseDoc,
   collapsedNodeIds,
@@ -308,6 +321,45 @@ function DiagramCanvas() {
   // listeners and change callbacks don't re-subscribe on every frame.
   const flowRef = useRef(flow);
   flowRef.current = flow;
+
+  // ── Hover association (DGC-100) ────────────────────────────────────────
+  // One hover target feeds a DERIVED edge array: hovering a node lights up
+  // every edge touching it; hovering an edge's line or its floating label
+  // lights up that edge (+ label). `flow` itself is never touched, so the
+  // diff overlay / compare classes and the drag hot path stay untouched.
+  const [hover, setHover] = useState<HoverTarget | null>(null);
+  const displayEdges = useMemo(() => applyHoverToEdges(flow.edges, hover), [flow.edges, hover]);
+  const onNodeMouseEnter = useCallback<NodeMouseHandler>(
+    (_, node) => setHover({ kind: "node", id: node.id }),
+    [],
+  );
+  const onNodeMouseLeave = useCallback<NodeMouseHandler>(
+    // Clear only our own entry — enter of the NEXT hovered element may have
+    // already landed (React Flow doesn't order leave/enter across elements).
+    (_, node) => setHover((h) => (h?.kind === "node" && h.id === node.id ? null : h)),
+    [],
+  );
+  const onEdgeMouseEnter = useCallback<EdgeMouseHandler>(
+    (_, edge) => setHover({ kind: "edge", id: edge.id }),
+    [],
+  );
+  const onEdgeMouseLeave = useCallback<EdgeMouseHandler>(
+    (_, edge) => setHover((h) => (h?.kind === "edge" && h.id === edge.id ? null : h)),
+    [],
+  );
+  // Edge-label divs render in EdgeLabelRenderer's HTML layer, OUTSIDE the
+  // edge's SVG group — React Flow's edge hover events never fire for them.
+  // Delegate mouseover/mouseout on the canvas host instead (they bubble).
+  const onCanvasMouseOver = useCallback((e: ReactMouseEvent) => {
+    const id = edgeLabelIdFromEventTarget(e.target);
+    if (id !== null) setHover({ kind: "edge", id });
+  }, []);
+  const onCanvasMouseOut = useCallback((e: ReactMouseEvent) => {
+    const id = edgeLabelIdFromEventTarget(e.target);
+    // Moving between children of the same label must not flicker the highlight.
+    if (id === null || edgeLabelIdFromEventTarget(e.relatedTarget) === id) return;
+    setHover((h) => (h?.kind === "edge" && h.id === id ? null : h));
+  }, []);
 
   // Debounced PUT of the whole override record (T30 sidecar).
   const scheduleSave = useCallback((name: string, next: SizedOverrides) => {
@@ -863,13 +915,26 @@ function DiagramCanvas() {
           prefs={prefs}
         />
       )}
-      <div className="canvas-host" ref={canvasHostRef}>
+      {/* mouseover/out delegation: hover on the floating edge-label divs
+          (DGC-100) — see onCanvasMouseOver above. */}
+      <div
+        className="canvas-host"
+        ref={canvasHostRef}
+        onMouseOver={onCanvasMouseOver}
+        onMouseOut={onCanvasMouseOut}
+      >
       <ReactFlow
         nodes={flow.nodes}
-        edges={flow.edges}
+        edges={displayEdges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeDragStop={(_, node) => handleNodeDragStop(node)}
+        // Hover association (DGC-100): node hover lights its edges; edge-line
+        // hover lights that edge + its label.
+        onNodeMouseEnter={onNodeMouseEnter}
+        onNodeMouseLeave={onNodeMouseLeave}
+        onEdgeMouseEnter={onEdgeMouseEnter}
+        onEdgeMouseLeave={onEdgeMouseLeave}
         // Right-click a node/group → context menu (DGC-20). Right-click on the
         // empty pane just dismisses an open one (browser menu left untouched).
         onNodeContextMenu={onNodeContextMenu}

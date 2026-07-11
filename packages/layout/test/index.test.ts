@@ -7,6 +7,8 @@ import {
   EDGE_LABEL_CHAR_WIDTH,
   EDGE_LABEL_HEIGHT,
   EDGE_LABEL_HORIZONTAL_PADDING,
+  EDGE_LABEL_LINE_HEIGHT,
+  EDGE_LABEL_MAX_WIDTH,
   NODE_HEIGHT,
   SPACING_PRESETS,
   type PositionedGraph,
@@ -275,6 +277,34 @@ describe("layoutDiagram — ELK-native edge labels (DGC-69)", () => {
         expect(overlaps, `label "${edge.label}" overlaps node ${node.id}`).toBe(false);
       }
     }
+  });
+
+  // DGC-100: long edge labels wrap to (at most) two lines instead of forcing
+  // ELK to reserve one huge single-line box — the reserved box caps its width
+  // at EDGE_LABEL_MAX_WIDTH and grows one extra row instead.
+  it("wraps past the width cap: capped width, one extra row (DGC-100)", () => {
+    const long = "Service > ErrorHandler: email trùng → UnprocessableEntity (422)";
+    expect(measureEdgeLabel(long)).toEqual({
+      width: EDGE_LABEL_MAX_WIDTH,
+      height: EDGE_LABEL_HEIGHT + EDGE_LABEL_LINE_HEIGHT,
+    });
+  });
+
+  it("keeps a label exactly at the cap on a single line (DGC-100 boundary)", () => {
+    const atCap = Math.floor(
+      (EDGE_LABEL_MAX_WIDTH - EDGE_LABEL_HORIZONTAL_PADDING) / EDGE_LABEL_CHAR_WIDTH,
+    );
+    expect(measureEdgeLabel("x".repeat(atCap)).height).toBe(EDGE_LABEL_HEIGHT);
+    expect(measureEdgeLabel("x".repeat(atCap + 1)).height).toBe(
+      EDGE_LABEL_HEIGHT + EDGE_LABEL_LINE_HEIGHT,
+    );
+  });
+
+  it("never reserves more than two rows, however long the text (DGC-100)", () => {
+    expect(measureEdgeLabel("x".repeat(500))).toEqual({
+      width: EDGE_LABEL_MAX_WIDTH,
+      height: EDGE_LABEL_HEIGHT + EDGE_LABEL_LINE_HEIGHT,
+    });
   });
 
   it("keeps sibling label boxes clear of each other", async () => {

@@ -493,6 +493,8 @@ body {
 
 /* ── Architecture renderer — theme B "dark blueprint" (T12) ── */
 .arch-node {
+  /* Anchor for the [data-full-label] tooltip (DGC-100). */
+  position: relative;
   width: 100%;
   height: 100%;
   display: flex;
@@ -541,10 +543,17 @@ body {
 .arch-group-chip--pack {
   filter: none;
 }
+/* Node label wraps to two lines before ellipsizing (DGC-100): two 12.5px
+   rows (~34px) still fit the fixed 48px node box (sizing.ts NODE_HEIGHT), so
+   the ELK box is untouched — pure paint change. Text cut past two lines
+   lives in the [data-full-label] tooltip + native title. */
 .arch-node-label {
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 .arch-handle {
   opacity: 0;
@@ -769,6 +778,8 @@ body {
 .react-flow__edge-path {
   stroke: var(--accent);
   stroke-width: 1.6;
+  /* Short ease for the hover-association accent (DGC-100). */
+  transition: stroke-width 120ms ease, filter 120ms ease;
 }
 /* Edge feedback (T15): hover/selected brighten and thicken the line — no
    animation. The arrowhead marker uses userSpaceOnUse so it stays put.
@@ -780,12 +791,27 @@ body {
   stroke-width: 2;
   filter: brightness(1.35);
 }
+/* Hover association (DGC-100): the edge under the pointer — or every edge of
+   a hovered node, or the edge whose floating label is hovered — pops with a
+   thicker accent stroke + glow so label↔line mapping is instant. ElkEdge puts
+   this class on the path element itself (via BaseEdge). Deliberately LESS
+   specific than `.react-flow__edge.diff-* .react-flow__edge-path`, so a diff
+   overlay's stroke color still wins while the thickness/glow apply. */
+.react-flow__edge-path.elk-edge-path--hl {
+  stroke: var(--accent);
+  stroke-width: 2.6;
+  filter: brightness(1.4) drop-shadow(0 0 4px var(--accent));
+}
 
 /* ELK edge label (T15) — placed at ELK's reserved label box (DGC-69; the
    longest-segment heuristic is the fallback), on a translucent panel like the
-   other floating chrome so it stays legible over the grid. Very long labels
-   ellipsize at 220px; the full text lives in the `title` tooltip, which is
-   why the label accepts pointer events (hover only — it has no handlers). */
+   other floating chrome so it stays legible over the grid. Long labels wrap
+   to two lines then ellipsize (DGC-100) — the max-width comes inline from
+   EDGE_LABEL_MAX_WIDTH (layout sizing.ts), and line-height 16px is what makes
+   1 row = EDGE_LABEL_HEIGHT (22) / 2 rows = +EDGE_LABEL_LINE_HEIGHT (16), so
+   the painted box matches what ELK reserved. Full text lives in the `title`
+   + [data-full-label] tooltips, which is why the label accepts pointer
+   events; hovering it also lights up its line (App's mouseover delegation). */
 .elk-edge-label {
   position: absolute;
   z-index: 1;
@@ -796,12 +822,68 @@ body {
   padding: 2px 7px;
   font-size: var(--font-ui-sm);
   font-weight: 500;
+  line-height: 16px;
   color: var(--text-dim);
   backdrop-filter: blur(4px);
-  white-space: nowrap;
-  max-width: 220px;
+  transition: color 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+.elk-edge-label__text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+}
+/* Label side of the hover association (DGC-100): rises above its neighbours
+   and takes the accent ring while its edge is lit. */
+.elk-edge-label--hl {
+  z-index: 3;
+  color: var(--text-strong);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), var(--elev-2);
+}
+
+/* ── Full-text hover tooltip (DGC-100 part 2) ──
+   Pure CSS: elements whose label may truncate carry `data-full-label` (see
+   labelTooltip.ts for the gate) and grow a themed tooltip under themselves
+   after a ~400ms hover — screenshots/export capture it, unlike the native
+   `title` (which stays as the accessibility floor). Hover-out hides fast.
+   The pseudo-element sits in the canvas coordinate space (it scales with
+   zoom, like the labels themselves). Applied hosts are all positioned:
+   .arch-node (relative), .arch-group__title / .elk-edge-label (absolute). */
+[data-full-label]::after {
+  content: attr(data-full-label);
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 320px;
+  padding: 6px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--elev-2);
+  color: var(--text);
+  font-size: var(--font-ui-sm);
+  font-weight: 500;
+  line-height: 1.45;
+  /* Group titles pass uppercase/tracking down — the tooltip shows raw text. */
+  text-transform: none;
+  letter-spacing: normal;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  z-index: 30;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 140ms ease, visibility 0s linear 140ms;
+}
+[data-full-label]:hover::after {
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 400ms, 400ms;
 }
 
 /* Onboarding empty state (T33) — dead-centered over the canvas. The wrapper
