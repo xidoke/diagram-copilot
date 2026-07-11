@@ -44,7 +44,7 @@ import { PresentMode } from "./components/PresentMode.js";
 import { isEditableTarget } from "./components/UndoButton.js";
 import { useDiagramConnection } from "./connection/index.js";
 import { applyPrefs, loadLayoutPrefs, saveLayoutPrefs, type LayoutPrefs } from "./render/layoutOptions.js";
-import { setSnapshotProvider } from "./render/snapshotResponder.js";
+import { reportSnapshotRendered, setSnapshotProvider, type RenderedStamp } from "./render/snapshotResponder.js";
 import { ArchGroup, ArchNode } from "./render/ArchNode.js";
 import { EditContext, type EditActions } from "./render/EditContext.js";
 import {
@@ -148,8 +148,11 @@ function DiagramCanvas() {
   // `base` is the pure ELK auto-layout; `flow` is what React Flow renders =
   // base with saved manual overrides folded in (and any in-progress drag). The
   // split keeps re-layout (ELK) off the drag/override hot path (T30).
-  const [base, setBase] = useState<{ nodes: Node[]; edges: Edge[] }>({ nodes: [], edges: [] });
-  const [flow, setFlow] = useState<{ nodes: Node[]; edges: Edge[] }>({ nodes: [], edges: [] });
+  // `stamp` carries which (name, version) the nodes were laid out FROM, so the
+  // snapshot responder's render gate can tell when the DOM really shows the
+  // content a snapshot-request asks for (DGC-101).
+  const [base, setBase] = useState<{ nodes: Node[]; edges: Edge[]; stamp?: RenderedStamp }>({ nodes: [], edges: [] });
+  const [flow, setFlow] = useState<{ nodes: Node[]; edges: Edge[]; stamp?: RenderedStamp }>({ nodes: [], edges: [] });
   // Manual position overrides for the active diagram. Mirrored into a ref so the
   // drag handler can build the next record without re-subscribing every render.
   const [overrides, setOverridesState] = useState<SizedOverrides>({});
@@ -256,7 +259,13 @@ function DiagramCanvas() {
       .then((graph) => {
         if (stale) return;
         const f = toFlow(viewDoc, graph);
-        setBase({ nodes: markCollapsedNodes(f.nodes, applied), edges: f.edges });
+        setBase({
+          nodes: markCollapsedNodes(f.nodes, applied),
+          edges: f.edges,
+          // Which broadcast these nodes came from — flows into `flow` below and
+          // is reported to the snapshot render gate after the DOM commit.
+          stamp: { name: lastDiagram.name, version: lastDiagram.version },
+        });
       })
       .catch((err) => console.error("layout failed", err))
       .finally(() => {
@@ -290,8 +299,19 @@ function DiagramCanvas() {
       // Pass nodes so a dragged group also dirties edges touching its
       // descendants / crossing its boundary (DGC-71 ancestor case).
       edges: applyDiffToEdges(markDirtyEdges(base.edges, effOverrides, base.nodes), overlay),
+      stamp: base.stamp,
     });
   }, [base, overrides, diffOverlay, compare]);
+
+  // Snapshot render gate (DGC-101): this effect runs AFTER the `flow` commit —
+  // React Flow's nodes for exactly `flow.stamp`'s (name, version) are in the
+  // DOM by now — so a snapshot-request racing an open_diagram/set_diagram is
+  // held by the responder until the canvas truly shows the requested content
+  // instead of capturing the previous diagram's pixels.
+  useEffect(() => {
+    reportSnapshotRendered(flow.stamp ?? null);
+  }, [flow]);
+  useEffect(() => () => reportSnapshotRendered(null), []);
 
   // Load the manual overrides for whichever diagram just became active. Cleared
   // first so diagram A's pins never briefly apply to diagram B.
