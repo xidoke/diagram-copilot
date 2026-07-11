@@ -5,6 +5,7 @@ Format theo [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning
 ## [Unreleased]
 
 ### Added
+- UX text dài (dogfood Chợ Phiên CP-12): hover edge-label làm sáng đúng line, hover node sáng mọi edge nối vào; tooltip đủ text cho label bị cắt; edge/node label wrap 2 dòng thay vì "…" — PNG export hưởng theo (DGC-100).
 - Icon pack hãng OPT-IN, AWS trước (DGC-99): `pnpm icons:aws` tải asset package chính hãng từ trang AWS Architecture Icons về máy người dùng (KHÔNG commit artwork vào repo — `packages/icons/packs/` gitignored + ATTRIBUTION riêng), sinh registry namespace `aws:*` (~303 icon dịch vụ 48px) + alias tên trần (s3, sqs, eks, vpc, iam, msk, ...) chỉ sống khi pack có mặt; glyph chính hãng render NGUYÊN BẢN trong icon chip trung tính của node (không recolor/không glow — tuân thủ AWS Trademark Guidelines), palette 🎨 và `list_icons` tự hiện pack khi cài, chưa cài thì `aws:*` fallback generic box như id lạ (ảnh docs/demos/aws-pack/).
 - v1.4 R1: design tokens v2 (type/spacing/radius/elevation, 2 theme), toolbar regroup thành 2 cluster icon SVG (hết chữ cái C/N/A + emoji, fix nút export mồ côi), picker/status-pill polish, MiniMap + group fill theme-aware ở light mode (DGC-94, ảnh docs/demos/r1-revamp/).
 - v2.0 Phase A: Group collapse/expand ▸/▾ — thu group thành node compact, edges gộp có đếm ("label ×N"), nested giữ trạng thái, nhớ qua reload; sơ đồ 72 node thu về 1 màn hình (DGC-67/F7).
