@@ -76,10 +76,12 @@ function nearAnchor(x: number, y: number, anchor: Point): boolean {
 }
 
 /**
- * One-off `<defs>` holding the arrowhead marker: an accent-colored chevron
- * sized for the 1.6px edge stroke. `userSpaceOnUse` keeps it a constant size
- * when hover/selection thickens the stroke. Rendered once by the canvas —
- * `url(#…)` resolves document-wide, so it must not repeat per edge.
+ * One-off `<defs>` holding the arrowhead marker: a chevron in the resting
+ * edge ink (`--edge-stroke`, DGC-97) with a stroke width matching the
+ * 1.5px edge stroke (`--edge-stroke-width`). `userSpaceOnUse` keeps it a
+ * constant size when hover/selection thickens the stroke. Rendered once by
+ * the canvas — `url(#…)` resolves document-wide, so it must not repeat per
+ * edge.
  */
 export function ElkEdgeMarkerDefs() {
   return (
@@ -98,8 +100,8 @@ export function ElkEdgeMarkerDefs() {
           <path
             d="M 3 2 L 9 6 L 3 10"
             fill="none"
-            stroke="var(--accent)"
-            strokeWidth="1.6"
+            stroke="var(--edge-stroke)"
+            strokeWidth="1.5"
             strokeLinecap="round"
             strokeLinejoin="round"
           />

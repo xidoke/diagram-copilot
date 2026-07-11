@@ -504,10 +504,14 @@ body {
   background: var(--panel);
   border: var(--node-border-width) solid var(--border);
   border-radius: var(--node-radius);
-  box-shadow: var(--node-glow), var(--node-shadow);
+  /* Tinted elevation (DGC-97) — the old accent bloom (--node-glow) made
+     every resting node softly "lit"; a shadow in the --elev ink keeps the
+     depth cue and leaves glow to interaction states. */
+  box-shadow: var(--node-shadow-rest);
   color: var(--text-strong);
   font-size: var(--font-node-label);
   font-weight: 500;
+  transition: box-shadow 120ms ease, border-color 120ms ease;
 }
 /* Only applied when the node carries an explicit `color` — plain nodes
    keep a uniform border so the accent stays a deliberate signal. */
@@ -515,9 +519,10 @@ body {
   border-left-width: var(--node-accent-border-width);
   border-left-color: var(--node-accent, var(--accent));
 }
-/* Leaf hover: brighten the border; keep an accent node's left edge colored. */
+/* Leaf hover: brighten the border + rise one elevation step (DGC-97). */
 .arch-node:hover {
   border-color: var(--node-hover-border);
+  box-shadow: var(--node-shadow-hover);
 }
 .arch-node--accent:hover {
   border-left-color: var(--node-accent, var(--accent));
@@ -530,7 +535,9 @@ body {
   align-items: center;
   justify-content: center;
   border-radius: var(--icon-chip-radius);
-  filter: drop-shadow(var(--icon-chip-glow));
+  /* Glow only where the theme wants it (dark keeps it, light goes flat —
+     see --icon-chip-filter in tokens.css, DGC-97). */
+  filter: var(--icon-chip-filter);
 }
 .arch-node-chip svg {
   width: 100%;
@@ -570,10 +577,12 @@ body {
 }
 
 /* Selected leaf (DGC-78): visual editing makes selection consequential (the
-   Delete key removes it), so the outline must be unmistakable. */
+   Delete key removes it), so the outline must be unmistakable — but crisp,
+   not glowing (DGC-97): a 1.5px accent ring (1px border + 0.5px spread)
+   over the hover elevation. */
 .react-flow__node.selected .arch-node {
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent), var(--node-glow), var(--node-shadow);
+  box-shadow: 0 0 0 0.5px var(--accent), var(--node-shadow-hover);
 }
 
 /* Inline rename input (DGC-78): swapped in for the label on double-click.
@@ -582,7 +591,9 @@ body {
 .arch-rename-input {
   font: inherit;
   color: var(--text-strong);
-  background: rgba(5, 8, 14, 0.65);
+  /* Theme token, not a baked dark wash — the old rgba(5,8,14,.65) painted a
+     dark box inside light-theme nodes (found during the DGC-97 pass). */
+  background: var(--bg);
   border: 1px solid var(--accent);
   border-radius: 6px;
   padding: 1px 6px;
@@ -616,7 +627,9 @@ body {
 .arch-group {
   width: 100%;
   height: 100%;
-  border: var(--group-border-width) dashed var(--border);
+  /* Hairline in the subtle border ink (DGC-97): the container should read
+     UNDER its nodes — hover/accent/selected states still brighten it. */
+  border: var(--group-border-width) dashed var(--border-subtle);
   background: var(--group-bg);
   border-radius: var(--group-radius);
   /* Depth tint overlay: a full-bleed inset shadow layered over the background
@@ -700,7 +713,7 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--group-radius) var(--group-radius) 0 0;
   cursor: grab;
   transition: background 0.12s ease;
@@ -754,14 +767,16 @@ body {
   border: none;
   background: transparent;
   color: var(--text-dim);
-  font-size: 11px;
+  font-size: var(--font-ui-sm);
   line-height: 1;
   border-radius: 4px;
   cursor: pointer;
 }
+/* Hover matches the chrome control system (toolbar buttons): neutral wash +
+   text brighten, not an accent flash (DGC-97). */
 .arch-collapse-btn:hover {
-  color: var(--accent);
-  background: var(--group-title-hover, rgba(74, 163, 255, 0.14));
+  color: var(--text);
+  background: var(--control-hover-bg);
 }
 /* Compact stand-in for a collapsed group (DGC-67): dashed border echoes the
    group outline it replaces, and a "stacked cards" shadow hints that content
@@ -771,25 +786,28 @@ body {
   box-shadow:
     3px 3px 0 -1px var(--panel),
     3px 3px 0 0 var(--border),
-    var(--node-glow),
-    var(--node-shadow);
+    var(--node-shadow-rest);
 }
 
+/* Resting edges (DGC-97): a desaturated blueprint stroke — NOT the accent —
+   so hover/selected/diff accents read as state changes instead of blending
+   into an all-accent canvas (hierarchy: group < edge < node < label). */
 .react-flow__edge-path {
-  stroke: var(--accent);
-  stroke-width: 1.6;
+  stroke: var(--edge-stroke);
+  stroke-width: var(--edge-stroke-width);
   /* Short ease for the hover-association accent (DGC-100). */
-  transition: stroke-width 120ms ease, filter 120ms ease;
+  transition: stroke 120ms ease, stroke-width 120ms ease, filter 120ms ease;
 }
-/* Edge feedback (T15): hover/selected brighten and thicken the line — no
-   animation. The arrowhead marker uses userSpaceOnUse so it stays put.
-   `stroke` is repeated here because xyflow's own `.selected` rule would
-   otherwise repaint the path in its gray default. */
+/* Edge feedback (T15): hover/selected switch to the interaction accent and
+   thicken — the color jump from the muted resting stroke is the signal, so
+   no brightness filter needed anymore (DGC-97). The arrowhead marker uses
+   userSpaceOnUse so it stays put. `stroke` is repeated here because
+   xyflow's own `.selected` rule would otherwise repaint the path in its
+   gray default. */
 .react-flow__edge:hover .react-flow__edge-path,
 .react-flow__edge.selected .react-flow__edge-path {
   stroke: var(--accent);
   stroke-width: 2;
-  filter: brightness(1.35);
 }
 /* Hover association (DGC-100): the edge under the pointer — or every edge of
    a hovered node, or the edge whose floating label is hovered — pops with a
@@ -817,7 +835,9 @@ body {
   z-index: 1;
   pointer-events: all;
   background: var(--panel-translucent);
-  border: 1px solid var(--border);
+  /* Hairline border (DGC-97): the full --border ink made every label read
+     as a button; the chip should float on the line, not compete with nodes. */
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
   padding: 2px 7px;
   font-size: var(--font-ui-sm);
