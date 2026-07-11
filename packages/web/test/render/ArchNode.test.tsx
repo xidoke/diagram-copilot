@@ -122,6 +122,32 @@ describe("ArchNode", () => {
   });
 });
 
+/** Full-text tooltip gate (DGC-100): long labels carry data-full-label for the
+ *  pure-CSS hover tooltip; short labels stay clean. */
+describe("full-text label tooltip (DGC-100)", () => {
+  const LONG_NODE = "UserRepository · interface — Spring Data sinh implementation";
+  const LONG_GROUP = "Registration slice — application layer (hexagonal)";
+
+  it("adds data-full-label to a node only when the label may truncate", () => {
+    expect((renderNode({}) as any).props["data-full-label"]).toBeUndefined();
+    expect((renderNode({ label: LONG_NODE }) as any).props["data-full-label"]).toBe(LONG_NODE);
+  });
+
+  it("group title band: a long name swaps the drag-hint title for the tooltip", () => {
+    const shortBand = collect(renderGroup({})).find(
+      (n) => n.props?.className === "arch-group__title",
+    );
+    expect(shortBand.props.title).toBe("Kéo tiêu đề để di chuyển nhóm");
+    expect(shortBand.props["data-full-label"]).toBeUndefined();
+
+    const longBand = collect(renderGroup({ label: LONG_GROUP })).find(
+      (n) => n.props?.className === "arch-group__title",
+    );
+    expect(longBand.props["data-full-label"]).toBe(LONG_GROUP);
+    expect(longBand.props.title).toBeUndefined();
+  });
+});
+
 /** Collapse/expand affordances (DGC-67). */
 const toggles = (el: unknown) => collect(el).filter((n) => n.type === CollapseToggle);
 

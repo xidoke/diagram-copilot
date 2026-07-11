@@ -5,6 +5,7 @@ import { resolveColor } from "./colors.js";
 import { useCollapseActions } from "./CollapseContext.js";
 import { useEditActions } from "./EditContext.js";
 import { validateRename } from "./editRequests.js";
+import { tooltipFor } from "./labelTooltip.js";
 import type { ArchNodeData } from "./toFlow.js";
 
 const HANDLE_POSITIONS: Record<string, { target: Position; source: Position }> = {
@@ -48,7 +49,9 @@ export function EditableLabel({ id, label, className }: { id: string; label: str
                 setEditing(true);
               }
         }
-        title={edit === null ? undefined : "Double-click để đổi tên"}
+        // Full text first (DGC-100 — truncated labels must stay readable
+        // somewhere), then the rename affordance hint when editing is live.
+        title={edit === null ? label : `${label}\nDouble-click để đổi tên`}
       >
         {label}
       </span>
@@ -168,9 +171,16 @@ export function ArchNode({ id, data }: NodeProps) {
     // stacked shadow, styled in App.css.
     ...(collapsed === true ? ["arch-node--collapsed"] : []),
   ].join(" ");
+  // Long labels clamp at two lines (DGC-100) — surface the full text in a
+  // styled hover tooltip ([data-full-label]::after in App.css).
+  const tooltip = tooltipFor(label, "node");
 
   return (
-    <div className={className} style={style}>
+    <div
+      className={className}
+      style={style}
+      {...(tooltip !== undefined ? { "data-full-label": tooltip } : {})}
+    >
       <Handle type="target" position={pos.target} className="arch-handle" />
       {collapsed === true && <CollapseToggle id={id} collapsed />}
       {icon !== undefined && <IconChip icon={icon} accent={accent} className="arch-node-chip" />}
@@ -201,6 +211,11 @@ export function ArchGroup({ id, data, selected }: NodeProps) {
     depthClass,
     ...(color !== undefined ? ["arch-group--accent"] : []),
   ].join(" ");
+  // Group titles stay single-line (the 32px band can't grow) — a long name
+  // gets the styled full-text tooltip instead (DGC-100). When it does, the
+  // tooltip replaces the drag-hint `title` so the two don't stack; the hover
+  // wash + grab cursor still hint the drag affordance.
+  const tooltip = tooltipFor(label, "group");
 
   return (
     <div className={className} style={style}>
@@ -225,7 +240,12 @@ export function ArchGroup({ id, data, selected }: NodeProps) {
           `title` gives a hover tooltip hinting the affordance. Double-click on
           the label renames the group (DGC-78) — the rename input is `nodrag`,
           so typing in it never starts a drag. */}
-      <div className="arch-group__title" title="Kéo tiêu đề để di chuyển nhóm">
+      <div
+        className="arch-group__title"
+        {...(tooltip !== undefined
+          ? { "data-full-label": tooltip }
+          : { title: "Kéo tiêu đề để di chuyển nhóm" })}
+      >
         {/* ▾ collapse (DGC-67): folds the group into one compact node. Lives on
             the title band (already pointer-interactive) as an explicit button —
             double-click stays reserved for rename. */}

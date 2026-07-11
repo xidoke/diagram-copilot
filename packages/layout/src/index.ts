@@ -32,6 +32,8 @@ export {
   EDGE_LABEL_HEIGHT,
   EDGE_LABEL_CHAR_WIDTH,
   EDGE_LABEL_HORIZONTAL_PADDING,
+  EDGE_LABEL_LINE_HEIGHT,
+  EDGE_LABEL_MAX_WIDTH,
   measureNode,
   measureEdgeLabel,
 } from "./sizing.js";

@@ -7,7 +7,7 @@ import {
   Position,
   type EdgeProps,
 } from "@xyflow/react";
-import type { PositionedEdgeSection } from "@diagram-copilot/layout";
+import { EDGE_LABEL_MAX_WIDTH, type PositionedEdgeSection } from "@diagram-copilot/layout";
 import {
   ELK_ARROW_ID,
   ElkEdge,
@@ -59,7 +59,15 @@ const anchors = { staticSource: { x: 0, y: 0 }, staticTarget: { x: 50, y: 40 } }
 const renderEdge = (props: Record<string, unknown>) =>
   ElkEdge({ id: "e1", source: "a", target: "b", ...props } as unknown as EdgeProps);
 
-const findLabel = (els: any[]) => els.find((n) => n.props?.className === "elk-edge-label");
+const findLabel = (els: any[]) =>
+  els.find(
+    (n) =>
+      typeof n.props?.className === "string" &&
+      n.props.className.split(" ").includes("elk-edge-label"),
+  );
+
+/** The label's visible text — nested in the 2-line clamp span (DGC-100). */
+const labelText = (label: any) => label.props.children.props.children;
 
 describe("ElkEdge — static ELK route", () => {
   it("draws the exact ELK route via BaseEdge with the arrow marker", () => {
@@ -99,7 +107,7 @@ describe("ElkEdge — static ELK route", () => {
     const label = findLabel(els);
     expect(label).toBeDefined();
     expect(label.props.style.transform).toBe("translate(-50%, -50%) translate(40px, 10px)");
-    expect(label.props.children).toBe("https");
+    expect(labelText(label)).toBe("https");
   });
 
   it("falls back to the longest-segment midpoint when labelPos is absent", () => {
@@ -109,7 +117,7 @@ describe("ElkEdge — static ELK route", () => {
     expect(label).toBeDefined();
     // Longest segment is (0,0)→(50,0): midpoint (25,0), normal up, offset 14.
     expect(label.props.style.transform).toBe("translate(-50%, -50%) translate(25px, -14px)");
-    expect(label.props.children).toBe("https");
+    expect(labelText(label)).toBe("https");
   });
 
   it("exposes the full label text as a hover tooltip", () => {
@@ -171,6 +179,58 @@ describe("ElkEdge — dynamic endpoints (DGC-69)", () => {
     expect(renderEdge({}).type).toBe(SmoothStepEdge);
     expect(renderEdge({ data: {} }).type).toBe(SmoothStepEdge);
     expect(renderEdge({ data: { sections: [] } }).type).toBe(SmoothStepEdge);
+  });
+});
+
+describe("ElkEdge — long-label UX (DGC-100)", () => {
+  const LONG = "Service > ErrorHandler: email trùng → UnprocessableEntity (422)";
+
+  it("tags the label with its edge id so App's hover delegation can find the edge", () => {
+    const label = findLabel(collect(renderEdge({ data: { sections }, label: "https" })));
+    expect(label.props["data-edge-id"]).toBe("e1");
+  });
+
+  it("caps the label at the same width ELK reserved (EDGE_LABEL_MAX_WIDTH)", () => {
+    const label = findLabel(collect(renderEdge({ data: { sections }, label: LONG })));
+    expect(label.props.style.maxWidth).toBe(EDGE_LABEL_MAX_WIDTH);
+  });
+
+  it("nests the text in the 2-line clamp span", () => {
+    const label = findLabel(collect(renderEdge({ data: { sections }, label: LONG })));
+    expect(label.props.children.props.className).toBe("elk-edge-label__text");
+    expect(labelText(label)).toBe(LONG);
+  });
+
+  it("adds the styled full-text tooltip only for labels long enough to truncate", () => {
+    const long = findLabel(collect(renderEdge({ data: { sections }, label: LONG })));
+    expect(long.props["data-full-label"]).toBe(LONG);
+    const short = findLabel(collect(renderEdge({ data: { sections }, label: "https" })));
+    expect(short.props["data-full-label"]).toBeUndefined();
+  });
+
+  it("accents path + label when data.highlighted is set (static route)", () => {
+    const els = collect(renderEdge({ data: { sections, highlighted: true }, label: "https" }));
+    const base = els.find((n) => n.type === BaseEdge);
+    expect(base.props.className).toBe("elk-edge-path--hl");
+    expect(findLabel(els).props.className).toBe("elk-edge-label elk-edge-label--hl");
+  });
+
+  it("leaves the accent off without the flag", () => {
+    const els = collect(renderEdge({ data: { sections }, label: "https" }));
+    expect(els.find((n) => n.type === BaseEdge).props.className).toBeUndefined();
+    expect(findLabel(els).props.className).toBe("elk-edge-label");
+  });
+
+  it("accents the dynamic (smoothstep) branch the same way", () => {
+    const els = collect(
+      renderEdge({
+        data: { sections, ...anchors, dirtyEndpoints: true, highlighted: true },
+        ...handles,
+        label: "https",
+      }),
+    );
+    expect(els.find((n) => n.type === BaseEdge).props.className).toBe("elk-edge-path--hl");
+    expect(findLabel(els).props.className).toBe("elk-edge-label elk-edge-label--hl");
   });
 });
 
