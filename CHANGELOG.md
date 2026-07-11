@@ -19,6 +19,7 @@ Format theo [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning
 - Docs pack: README quickstart 5 phút (song ngữ), tài liệu DSL đầy đủ (`docs/DSL.md`), CHANGELOG, MIT license (DGC-14).
 
 ### Fixed
+- Fix data-correctness: export/snapshot ngay sau khi đổi diagram/direction không còn trả pixel của bản TRƯỚC — responder web gate theo đúng name+version đã render vào DOM (cả headless lẫn tab thật) (DGC-101).
 - Packaging: conditional `exports` trong `packages/server/package.json` sao cho `dist/` build đã build chạy standalone dưới `node` thuần, không cần workspace linking (DGC-59/T38).
 - Test: assertion export-traversal phụ thuộc môi trường — phát hiện bởi lần chạy CI thật đầu tiên.
 
