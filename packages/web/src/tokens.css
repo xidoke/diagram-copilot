@@ -88,8 +88,11 @@
   --node-accent-border-width: 2px;
   --node-glow: 0 0 14px rgba(60, 120, 255, 0.14);
   --node-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
-  --node-gap: 9px;
-  --node-padding-x: 14px;
+  /* Node internals on the --space scale (DGC-97): 12px side padding is
+     exactly the 24px total ELK reserves (sizing.ts NODE_HORIZONTAL_PADDING),
+     so painted text gets the room the layout budgeted. */
+  --node-gap: var(--space-2);
+  --node-padding-x: var(--space-3);
 
   /* Icon chip */
   --icon-chip-size: 18px;
@@ -99,7 +102,9 @@
   /* Group chrome — canvas containers keep a larger 12px radius (documented
      exception to the 8px lock: container scale = chrome scale + 4). */
   --group-radius: 12px;
-  --group-border-width: 1.5px;
+  /* 1px hairline (DGC-97) — groups sit BELOW nodes in the visual
+     hierarchy; the dashed 1.5px read heavier than the nodes it contains. */
+  --group-border-width: 1px;
   --group-bg: rgba(50, 110, 220, 0.05);
   --group-accent-bg: rgba(50, 110, 220, 0.08);
   /* Icon shown beside a group label when the group has an `icon`. */
@@ -159,6 +164,25 @@
   --diff-removed: #e5484d;
   --diff-removed-glow: 0 0 0 1.5px var(--diff-removed), 0 0 14px rgba(229, 72, 77, 0.38);
   --diff-removed-stroke: #e5484d;
+
+  /* ── Node/edge hero polish (DGC-97 / v1.4 R4) ────────────────────────
+     Node elevation — tinted like the --elev scale (same shadow ink), with
+     the old inset top-highlight folded in. Supersedes --node-glow /
+     --node-shadow on the node itself; --node-glow stays for the pinned
+     marker dot. Hover raises one step; selected adds the accent ring in
+     App.css on top of the hover elevation. */
+  --node-shadow-rest: 0 1px 3px rgba(4, 10, 24, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --node-shadow-hover: 0 3px 12px rgba(4, 10, 24, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  /* Icon-chip glow, now behind one switchable filter token: kept in the
+     dark theme (blueprint identity), turned off on white where the bloom
+     read as a smudge (eraser-style flat chips). */
+  --icon-chip-filter: drop-shadow(var(--icon-chip-glow));
+  /* Edge system — the RESTING stroke steps back from the interaction
+     accent (a desaturated blueprint blue) so hover / selected / diff
+     accents actually register as state changes; arrowheads share it.
+     1.5px base: readable at fit-view zoom without competing with nodes. */
+  --edge-stroke: #6a8cbd;
+  --edge-stroke-width: 1.5px;
 }
 
 [data-theme="light"] {
@@ -245,4 +269,13 @@
   --diff-removed: #d43a3a;
   --diff-removed-glow: 0 0 0 1.5px var(--diff-removed), 0 0 10px rgba(212, 58, 58, 0.25);
   --diff-removed-stroke: #d43a3a;
+
+  /* ── Node/edge hero polish (DGC-97 / v1.4 R4) — light retunes ────── */
+  --node-shadow-rest: 0 1px 3px rgba(35, 48, 90, 0.12);
+  --node-shadow-hover: 0 3px 12px rgba(35, 48, 90, 0.16);
+  /* No glow on white — a bright chip color bloomed into a smudge. */
+  --icon-chip-filter: none;
+  /* Muted slate-blue resting stroke; --accent (#4a7dd6) stays the
+     hover/selected pop. */
+  --edge-stroke: #6d7fa3;
 }
