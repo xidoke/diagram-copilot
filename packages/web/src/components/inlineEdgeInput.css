@@ -1,25 +1,27 @@
 /* Inline edge-label input (DGC-85): a small floating field centered on the
    double-click / drop point. Fixed + portaled to <body>, so it rides above the
    canvas; the transform centers it on (left, top). Mirrors the accent-bordered
-   look of the node rename input (.arch-rename-input). */
+   look of the node rename input (.arch-rename-input).
+   v2 tokens (DGC-96): the shared overlay surface + `--radius-sm`, edge-label
+   typography, and a plain `--elev-2` lift (no glow — the design bans glows). */
 .inline-edge-input {
   position: fixed;
   transform: translate(-50%, -50%);
   z-index: 20;
   min-width: 120px;
   max-width: 240px;
-  padding: 4px 8px;
-  font-size: 12px;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--font-ui-sm);
   font-weight: 600;
   color: var(--text-strong);
-  background: var(--panel-translucent, rgba(5, 8, 14, 0.92));
+  background: var(--surface-overlay);
   backdrop-filter: blur(6px);
   border: 1px solid var(--accent);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   outline: none;
-  box-shadow: var(--node-glow, 0 0 0 1px rgba(74, 163, 255, 0.25));
+  box-shadow: var(--elev-2);
 }
 .inline-edge-input::placeholder {
-  color: var(--text-muted, rgba(200, 210, 225, 0.5));
+  color: var(--text-dim);
   font-weight: 500;
 }

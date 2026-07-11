@@ -3,6 +3,12 @@
  * (theme B: dark blueprint). The panel overlays the canvas from the right; the
  * canvas never resizes. A vertical toggle tab rides the panel's left edge so
  * it's reachable whether the panel is open or closed.
+ *
+ * v2 tokens (DGC-96): identical surface / motion / typography treatment to the
+ * DSL drawer (its mirror), so the two slide-overs read as one family — solid
+ * `--surface-1`, the shared `--transition-slow` / `--ease-out` slide+fade, and
+ * the base 13px UI type. The Edit/Preview button follows the control tokens
+ * (hover wash + `aria-pressed` active fill + focus-visible ring).
  */
 
 .notes {
@@ -15,7 +21,7 @@
   /* Slid off-screen by default; the toggle tab (left: -32px) still pokes out
      past the viewport's right edge so it stays clickable. */
   transform: translateX(100%);
-  transition: transform 200ms ease;
+  transition: transform var(--transition-slow) var(--ease-out);
   /* Let the toggle tab render outside the panel box. */
   overflow: visible;
   pointer-events: none;
@@ -24,17 +30,23 @@
   transform: translateX(0);
 }
 
-/* The actual surface — a touch darker/denser than the canvas so it reads as a
-   distinct panel layered over the diagram. */
+/* The actual surface — the solid "drawer" surface token, mirror of the DSL
+   drawer. Opacity fades with the slide and lives here (not on `.notes`) so the
+   toggle tab never fades out while closed. */
 .notes-panel {
   position: absolute;
   inset: 0;
   display: flex;
   flex-direction: column;
-  background: var(--panel);
+  background: var(--surface-1);
   border-left: 1px solid var(--border);
   box-shadow: -4px 0 24px var(--panel-shadow-color);
+  opacity: 0;
+  transition: opacity var(--transition-slow) var(--ease-out);
   pointer-events: auto;
+}
+.notes--open .notes-panel {
+  opacity: 1;
 }
 
 /* Vertical toggle tab, riding the panel's left edge (moves with the panel). */
@@ -51,10 +63,10 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  background: var(--panel);
+  background: var(--surface-1);
   border: 1px solid var(--border);
   border-right: none;
-  border-radius: 10px 0 0 10px;
+  border-radius: var(--radius) 0 0 var(--radius);
   color: var(--text-dim);
   cursor: pointer;
   pointer-events: auto;
@@ -62,6 +74,11 @@
 .notes-toggle:hover {
   color: var(--text);
   border-color: var(--accent);
+}
+.notes-toggle:focus-visible {
+  outline: 1.5px solid var(--accent);
+  outline-offset: -1.5px;
+  color: var(--text);
 }
 .notes-toggle__glyph {
   display: inline-flex;
@@ -86,19 +103,19 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--border);
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
 }
 .notes-header__title {
   display: inline-flex;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--space-2);
   min-width: 0;
 }
 .notes-header__name {
   color: var(--text-strong);
-  font-size: 13px;
+  font-size: var(--font-ui);
   font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
@@ -112,26 +129,39 @@
 .notes-header__status {
   flex: none;
   color: var(--text-dim);
-  font-size: 11px;
+  font-size: var(--font-ui-sm);
   font-weight: 600;
 }
 
-/* Edit/Preview pill toggle. */
+/* Edit/Preview toggle — a pill on the control tokens: quiet border at rest, a
+   wash on hover, and the accent fill once pressed (preview on). */
 .notes-tab {
   flex: none;
-  padding: 3px 10px;
-  border-radius: 999px;
+  padding: 3px var(--space-3);
+  border-radius: var(--radius-full);
   border: 1px solid var(--border);
   background: transparent;
   color: var(--text-dim);
-  font-size: 11px;
+  font-size: var(--font-ui-sm);
   font-weight: 700;
   letter-spacing: 0.02em;
   cursor: pointer;
+  transition: background var(--transition-fast) var(--ease-out),
+    color var(--transition-fast) var(--ease-out),
+    border-color var(--transition-fast) var(--ease-out);
 }
 .notes-tab:hover {
   color: var(--text);
+  background: var(--control-hover-bg);
+}
+.notes-tab:focus-visible {
+  outline: 1.5px solid var(--accent);
+  outline-offset: 1px;
+}
+.notes-tab[aria-pressed="true"] {
   border-color: var(--accent);
+  background: var(--accent-soft-bg);
+  color: var(--accent);
 }
 
 /* Body fills the rest; textarea/preview each take the full height. */
@@ -146,11 +176,11 @@
   resize: none;
   border: none;
   outline: none;
-  padding: 12px 14px;
-  background: var(--panel);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-1);
   color: var(--text);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 13px;
+  font-size: var(--font-ui);
   line-height: 1.55;
 }
 .notes-textarea::placeholder {
@@ -164,12 +194,21 @@
   flex: 1;
   margin: 0;
   overflow: auto;
-  padding: 12px 14px;
-  background: var(--panel);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-1);
   color: var(--text);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 13px;
+  font-size: var(--font-ui);
   line-height: 1.55;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* Respect the OS "reduce motion" setting. */
+@media (prefers-reduced-motion: reduce) {
+  .notes,
+  .notes-panel,
+  .notes-tab {
+    transition: none;
+  }
 }

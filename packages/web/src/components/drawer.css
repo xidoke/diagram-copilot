@@ -3,6 +3,12 @@
  * overlays the canvas from the left; the canvas never resizes. A vertical
  * toggle tab rides the drawer's right edge so it's reachable whether the
  * drawer is open or closed.
+ *
+ * v2 tokens (DGC-96): the panel rides the shared `--surface-1` (the token
+ * reserved for "solid panel (nodes, drawers)") and the one motion pair
+ * (`--transition-slow` / `--ease-out`). Open/close combines a transform slide
+ * with an opacity fade on the surface only — the toggle tab is a sibling, so
+ * it never fades and stays clickable while closed.
  */
 
 .drawer {
@@ -15,7 +21,7 @@
   /* Slid off-screen by default; the toggle tab (right: -32px) still pokes
      out past the viewport's left edge so it stays clickable. */
   transform: translateX(-100%);
-  transition: transform 200ms ease;
+  transition: transform var(--transition-slow) var(--ease-out);
   /* Let the toggle tab render outside the panel box. */
   overflow: visible;
   pointer-events: none;
@@ -24,17 +30,24 @@
   transform: translateX(0);
 }
 
-/* The actual surface — a touch darker/denser than the canvas so it reads as a
-   distinct panel layered over the diagram. */
+/* The actual surface — the solid "drawer" surface token, layered over the
+   canvas with a directional drop shadow (only the color is themed; the offset
+   points away from the edge the panel slides in from). Fades in with the
+   slide (opacity lives here, not on `.drawer`, so the toggle tab stays lit). */
 .drawer-panel {
   position: absolute;
   inset: 0;
   display: flex;
   flex-direction: column;
-  background: var(--panel);
+  background: var(--surface-1);
   border-right: 1px solid var(--border);
   box-shadow: 4px 0 24px var(--panel-shadow-color);
+  opacity: 0;
+  transition: opacity var(--transition-slow) var(--ease-out);
   pointer-events: auto;
+}
+.drawer--open .drawer-panel {
+  opacity: 1;
 }
 
 /* Vertical toggle tab, riding the panel's right edge (moves with the drawer). */
@@ -51,10 +64,10 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  background: var(--panel);
+  background: var(--surface-1);
   border: 1px solid var(--border);
   border-left: none;
-  border-radius: 0 10px 10px 0;
+  border-radius: 0 var(--radius) var(--radius) 0;
   color: var(--text-dim);
   cursor: pointer;
   pointer-events: auto;
@@ -62,6 +75,11 @@
 .drawer-toggle:hover {
   color: var(--text);
   border-color: var(--accent);
+}
+.drawer-toggle:focus-visible {
+  outline: 1.5px solid var(--accent);
+  outline-offset: -1.5px;
+  color: var(--text);
 }
 .drawer-toggle__glyph {
   font-size: 15px;
@@ -82,19 +100,19 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--border);
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
 }
 .drawer-header__title {
   display: inline-flex;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--space-2);
   min-width: 0;
 }
 .drawer-header__name {
   color: var(--text-strong);
-  font-size: 13px;
+  font-size: var(--font-ui);
   font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
@@ -108,15 +126,15 @@
 .drawer-header__version {
   flex: none;
   color: var(--text-dim);
-  font-size: 11px;
+  font-size: var(--font-ui-sm);
   font-weight: 600;
 }
 
 /* Small, unobtrusive badge shown when the server diverged mid-edit. */
 .drawer-badge {
   flex: none;
-  padding: 3px 8px;
-  border-radius: 999px;
+  padding: 3px var(--space-2);
+  border-radius: var(--radius-full);
   border: 1px solid var(--accent);
   background: var(--accent-soft-bg);
   color: var(--accent);
@@ -126,13 +144,28 @@
   text-transform: uppercase;
   cursor: pointer;
   white-space: nowrap;
+  transition: background var(--transition-fast) var(--ease-out);
 }
 .drawer-badge:hover {
   background: var(--accent-soft-bg-hover);
+}
+.drawer-badge:focus-visible {
+  outline: 1.5px solid var(--accent);
+  outline-offset: 1px;
 }
 
 /* Editor fills the rest; Monaco needs a sized parent (height:100% inside). */
 .drawer-editor {
   flex: 1;
   min-height: 0;
+}
+
+/* Respect the OS "reduce motion" setting — the panel appears/disappears with
+   no slide or fade. */
+@media (prefers-reduced-motion: reduce) {
+  .drawer,
+  .drawer-panel,
+  .drawer-badge {
+    transition: none;
+  }
 }
