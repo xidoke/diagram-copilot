@@ -42,6 +42,15 @@
   --radius-sm: 6px; /* small controls (toolbar buttons, menu rows) */
   --radius-full: 999px; /* pills */
 
+  /* Motion (DGC-96) — one duration/easing pair for the whole chrome, so panel
+     open/close, popover appearance, and toasts all move in step. `--ease-out`
+     is a gentle ease-out expo (Linear-style); `-fast` covers menus/toasts/
+     hovers, `-slow` the larger slide-over panels. Component-level
+     `prefers-reduced-motion` blocks collapse these durations to 0. */
+  --transition-fast: 140ms;
+  --transition-slow: 180ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
   /* ── Surfaces ───────────────────────────────────────────────────── */
   --bg: #0b0e14;
   --panel: #141b28;
