@@ -121,6 +121,15 @@ body {
   outline: 1.5px solid var(--accent);
   outline-offset: -1.5px;
 }
+/* Disabled (what-if while Δ/⧉/present is on, DGC-91) — mirror steps-nav. */
+.toolbar-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.toolbar-btn:disabled:hover {
+  background: transparent;
+  color: var(--text-dim);
+}
 /* Active = filled wash, not just a text-color change (DGC-94 audit). */
 .toolbar-btn--active {
   background: var(--accent-soft-bg);
@@ -411,6 +420,40 @@ body {
 .react-flow__edge.diff-removed .react-flow__edge-path {
   stroke: var(--diff-removed-stroke);
   stroke-width: 2.2;
+}
+
+/* What-if kill simulation (DGC-91) — classes stamped by whatIf.ts onto the
+   React Flow node wrapper / edge group, same pattern as the diff overlay
+   above. Dead = red, dashed, dimmed; isolated (alive but cut off from every
+   traffic source) = amber, lightly dimmed; everything else untouched. */
+.react-flow__node.whatif-dead {
+  opacity: 0.55;
+}
+.react-flow__node.whatif-dead .arch-node,
+.react-flow__node.whatif-dead .arch-group {
+  border-color: var(--whatif-dead);
+  border-style: dashed;
+  box-shadow: var(--whatif-dead-glow);
+}
+.react-flow__edge.whatif-dead {
+  opacity: 0.6;
+}
+.react-flow__edge.whatif-dead .react-flow__edge-path {
+  stroke: var(--whatif-dead-stroke);
+  stroke-dasharray: 7 5;
+  stroke-width: 2;
+}
+.react-flow__node.whatif-isolated {
+  opacity: 0.8;
+}
+.react-flow__node.whatif-isolated .arch-node,
+.react-flow__node.whatif-isolated .arch-group {
+  border-color: var(--whatif-isolated);
+  box-shadow: var(--whatif-isolated-glow);
+}
+/* In-mode affordance: a node click means "toggle dead", not drag/select. */
+.app-shell.whatif .react-flow__node .arch-node {
+  cursor: crosshair;
 }
 
 /* ⧉ Compare mode (DGC-88) — split canvas. `.canvas-host` always wraps the live
@@ -1067,6 +1110,29 @@ body {
   font-weight: 600;
   color: var(--text-dim);
   pointer-events: none;
+}
+
+/* What-if mode hint (DGC-91) — top-center chip while simulating: usage help,
+   then a live dead/isolated tally. Amber-tinted border marks the canvas as
+   being in a simulation, not showing real state. */
+.whatif-hint {
+  position: fixed;
+  top: var(--space-3);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 12;
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--whatif-isolated);
+  background: var(--panel-translucent);
+  backdrop-filter: blur(12px);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-strong);
+  pointer-events: none;
+  white-space: nowrap;
 }
 
 /* Visual-editing receipt toast (DGC-78) — bottom-center, above the status

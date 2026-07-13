@@ -22,6 +22,7 @@ import {
   Rows3,
   Rows4,
   Sun,
+  ZapOff,
 } from "lucide-static";
 
 /** Chrome glyphs by role. Spacing maps density literally: more rows = tighter. */
@@ -39,6 +40,8 @@ export const TOOLBAR_ICONS = {
   present: Play,
   palette: Palette,
   export: Download,
+  // What-if kill-node simulation (DGC-91) — a cut power bolt: "outage".
+  whatIf: ZapOff,
 } as const;
 
 /**

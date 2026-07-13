@@ -109,6 +109,8 @@ import {
 import { DrillBreadcrumb } from "./components/DrillBreadcrumb.js";
 import type { CompareData } from "./render/compareMode.js";
 import { ComparePane } from "./components/ComparePane.js";
+import { applyKill, applyKillToEdges, applyKillToNodes } from "./render/whatIf.js";
+import type { DiagramDoc } from "@diagram-copilot/core";
 
 export const APP_TITLE = "diagram-copilot";
 
@@ -150,6 +152,9 @@ const NO_COLLAPSED: ReadonlySet<string> = new Set();
 /** Stable "not drilled" path — keeps effect deps quiet when at root (DGC-89). */
 const NO_DRILL: readonly string[] = [];
 
+/** Stable "nothing killed" set for what-if mode (DGC-91). */
+const NO_DEAD: ReadonlySet<string> = new Set();
+
 /**
  * How the drill view renders the world outside the focus (DGC-89): both modes
  * exist in `drillDoc` (pure, tested); "collapse" won the eyeball test — the
@@ -184,8 +189,15 @@ function DiagramCanvas() {
   // split keeps re-layout (ELK) off the drag/override hot path (T30).
   // `stamp` carries which (name, version) the nodes were laid out FROM, so the
   // snapshot responder's render gate can tell when the DOM really shows the
-  // content a snapshot-request asks for (DGC-101).
-  const [base, setBase] = useState<{ nodes: Node[]; edges: Edge[]; stamp?: RenderedStamp }>({ nodes: [], edges: [] });
+  // content a snapshot-request asks for (DGC-101). `viewDoc` is the doc these
+  // nodes were laid out from (post drill/collapse) — what-if kill simulation
+  // (DGC-91) computes on it so the simulation always matches what is rendered.
+  const [base, setBase] = useState<{
+    nodes: Node[];
+    edges: Edge[];
+    stamp?: RenderedStamp;
+    viewDoc?: DiagramDoc;
+  }>({ nodes: [], edges: [] });
   const [flow, setFlow] = useState<{ nodes: Node[]; edges: Edge[]; stamp?: RenderedStamp }>({ nodes: [], edges: [] });
   // Manual position overrides for the active diagram. Mirrored into a ref so the
   // drag handler can build the next record without re-subscribing every render.
@@ -295,6 +307,48 @@ function DiagramCanvas() {
     [lastDiagram, activeDrill],
   );
 
+  // ── What-if kill-node simulation (DGC-91) ──────────────────────────────
+  // "Nếu Redis chết thì sao?" — a pure VIEW mode: clicking nodes toggles them
+  // "dead"; applyKill (whatIf.ts) recomputes dead/isolated sets on the doc
+  // ACTUALLY rendered (post drill/collapse — base.viewDoc) and the derive
+  // effect below paints the classes. Nothing touches the DSL, undo history,
+  // or localStorage — exiting the mode restores the canvas untouched (a
+  // what-if is a momentary question, not state worth keeping). While the mode
+  // is on, every edit gesture is locked (this is a simulation, not an edit):
+  // drag/connect/select via React Flow props, rename + collapse toggles via
+  // null contexts, delete/⌘D + context menu + label editor via guards.
+  const [whatIfOn, setWhatIfOn] = useState(false);
+  const [whatIfDead, setWhatIfDead] = useState<ReadonlySet<string>>(NO_DEAD);
+  const exitWhatIf = useCallback(() => {
+    setWhatIfOn(false);
+    setWhatIfDead(NO_DEAD);
+  }, []);
+  const toggleWhatIf = useCallback(() => {
+    setWhatIfDead(NO_DEAD);
+    setWhatIfOn((on) => !on);
+  }, []);
+  // A diagram switch is a different world — stale dead ids must not carry over.
+  useEffect(() => exitWhatIf(), [diagramName, exitWhatIf]);
+  const killResult = useMemo(
+    () => (whatIfOn && base.viewDoc ? applyKill(base.viewDoc, whatIfDead) : null),
+    [whatIfOn, base, whatIfDead],
+  );
+  // In-mode click: toggle a leaf node (incl. collapsed-group reps and drill
+  // context reps — they are leaves in the view doc) dead. Group frames are
+  // containers, not traffic endpoints — ignored.
+  const onNodeClick = useCallback<NodeMouseHandler>(
+    (_, node) => {
+      if (!whatIfOn || node.type !== ARCH_NODE_TYPE) return;
+      setWhatIfDead((prev) => {
+        const next = new Set(prev);
+        if (next.has(node.id)) next.delete(node.id);
+        else next.add(node.id);
+        return next;
+      });
+    },
+    [whatIfOn],
+  );
+
   useEffect(() => {
     saveLayoutPrefs(prefs);
   }, [prefs]);
@@ -334,6 +388,8 @@ function DiagramCanvas() {
           // Which broadcast these nodes came from — flows into `flow` below and
           // is reported to the snapshot render gate after the DOM commit.
           stamp: { name: lastDiagram.name, version: lastDiagram.version },
+          // The doc these nodes render — what-if (DGC-91) simulates on this.
+          viewDoc,
         });
       })
       .catch((err) => console.error("layout failed", err))
@@ -366,14 +422,19 @@ function DiagramCanvas() {
     // dirty-edge behavior is unchanged otherwise.
     const repIds = new Set([...collapsedNodeIds(base.nodes), ...externalNodeIds(base.nodes)]);
     const effOverrides = pruneCollapsedSizes(overrides, repIds);
+    // What-if kill classes (DGC-91) layer last — exclusive with Δ/⧉ anyway
+    // (entering either exits what-if), so the two never actually stack.
     setFlow({
-      nodes: applyDiffToNodes(applyOverrides(base.nodes, effOverrides), overlay),
+      nodes: applyKillToNodes(applyDiffToNodes(applyOverrides(base.nodes, effOverrides), overlay), killResult),
       // Pass nodes so a dragged group also dirties edges touching its
       // descendants / crossing its boundary (DGC-71 ancestor case).
-      edges: applyDiffToEdges(markDirtyEdges(base.edges, effOverrides, base.nodes), overlay),
+      edges: applyKillToEdges(
+        applyDiffToEdges(markDirtyEdges(base.edges, effOverrides, base.nodes), overlay),
+        killResult,
+      ),
       stamp: base.stamp,
     });
-  }, [base, overrides, diffOverlay, compare]);
+  }, [base, overrides, diffOverlay, compare, killResult]);
 
   // Snapshot render gate (DGC-101): this effect runs AFTER the `flow` commit —
   // React Flow's nodes for exactly `flow.stamp`'s (name, version) are in the
@@ -583,7 +644,8 @@ function DiagramCanvas() {
   //     icon/color/label and keeping each copy in the original's group. The
   //     default (browser bookmark) is suppressed.
   useEffect(() => {
-    if (!diagramName) return;
+    // What-if mode (DGC-91) locks keyboard edits — the canvas is a simulation.
+    if (!diagramName || whatIfOn) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (isEditableTarget(e.target)) return;
 
@@ -615,20 +677,25 @@ function DiagramCanvas() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [diagramName, showEditToast]);
+  }, [diagramName, whatIfOn, showEditToast]);
 
   // ── Right-click context menu (DGC-20): open on a node/group, act via ops ──
   // React Flow hands us the DOM event + the node; we anchor the menu at the
   // pointer and stash the target's id/type/attrs for the pickers. `onPane
   // ContextMenu` (and any left-click, handled inside ContextMenu) closes it.
-  const onNodeContextMenu = useCallback<NodeMouseHandler>((event, node) => {
-    event.preventDefault();
-    setContextMenu({
-      target: { id: node.id, type: node.type, data: node.data as ContextMenuTarget["data"] },
-      x: event.clientX,
-      y: event.clientY,
-    });
-  }, []);
+  const onNodeContextMenu = useCallback<NodeMouseHandler>(
+    (event, node) => {
+      event.preventDefault();
+      // Edit gestures are locked while simulating an outage (DGC-91).
+      if (whatIfOn) return;
+      setContextMenu({
+        target: { id: node.id, type: node.type, data: node.data as ContextMenuTarget["data"] },
+        x: event.clientX,
+        y: event.clientY,
+      });
+    },
+    [whatIfOn],
+  );
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
   // Context-menu "đổi icon" / "đổi màu" → a set_attr op (null value removes it).
@@ -723,7 +790,8 @@ function DiagramCanvas() {
       const iconId = event.dataTransfer.getData(ICON_DND_MIME);
       if (!iconId) return;
       event.preventDefault();
-      if (!diagramName) return;
+      // Palette drops are edits — locked during what-if simulation (DGC-91).
+      if (!diagramName || whatIfOn) return;
       const nodes = flowRef.current.nodes;
       // Hit-test the drop point against each group's on-screen box (see
       // collectGroupBoxes). Innermost group wins; undefined → the DSL root —
@@ -746,7 +814,7 @@ function DiagramCanvas() {
         }
       });
     },
-    [diagramName, showEditToast, screenToFlowPosition, collectGroupBoxes, activeDrill],
+    [diagramName, whatIfOn, showEditToast, screenToFlowPosition, collectGroupBoxes, activeDrill],
   );
 
   // POST an `add_edge` (optionally labelled) and toast the receipt — the shared
@@ -774,7 +842,8 @@ function DiagramCanvas() {
   // resolves (Enter → with label; Esc/blur → without, see handleLabelCancel).
   const onConnect = useCallback(
     (connection: Connection) => {
-      if (!diagramName) return;
+      // Belt-and-braces: `nodesConnectable` is already off in what-if (DGC-91).
+      if (!diagramName || whatIfOn) return;
       const { source, target } = connection;
       if (!source || !target) return;
       if (altPressedRef.current) {
@@ -783,18 +852,23 @@ function DiagramCanvas() {
       }
       postAddEdge(source, target);
     },
-    [diagramName, postAddEdge],
+    [diagramName, whatIfOn, postAddEdge],
   );
 
   // Double-click an edge → edit its label (DGC-85). Opens the same inline input,
   // prefilled with the current label, anchored at the click. `zoomOnDoubleClick`
   // is already off so nothing zooms underneath.
-  const onEdgeDoubleClick = useCallback<EdgeMouseHandler>((event, edge) => {
-    event.preventDefault();
-    event.stopPropagation();
-    const current = typeof edge.label === "string" ? edge.label : "";
-    setLabelEditor({ kind: "edit", edgeId: edge.id, current, x: event.clientX, y: event.clientY });
-  }, []);
+  const onEdgeDoubleClick = useCallback<EdgeMouseHandler>(
+    (event, edge) => {
+      event.preventDefault();
+      event.stopPropagation();
+      // Label editing is an edit — locked during what-if simulation (DGC-91).
+      if (whatIfOn) return;
+      const current = typeof edge.label === "string" ? edge.label : "";
+      setLabelEditor({ kind: "edit", edgeId: edge.id, current, x: event.clientX, y: event.clientY });
+    },
+    [whatIfOn],
+  );
 
   // Inline label input resolved with a value (Enter):
   //   • editing an edge → a `set_attr {label}` op (blank clears it; unchanged is
@@ -847,6 +921,45 @@ function DiagramCanvas() {
     setDrill([]);
   }, [changeModeActive, setDrill]);
 
+  // Entering any change-visualisation mode also exits what-if (DGC-91) — the
+  // same v1 exclusivity rule as drill above. The toolbar button is disabled
+  // while one is on, so this effect covers the reverse order (what-if first,
+  // then Δ/⧉/▶ via StepsNav/hotkey).
+  useEffect(() => {
+    if (changeModeActive) exitWhatIf();
+  }, [changeModeActive, exitWhatIf]);
+
+  // Changing drill level mid-simulation swaps the rendered doc under the dead
+  // set — exit what-if instead of carrying half-valid ids into another view
+  // (consistent with the DGC-89 mode-switch pattern). Refs so only a REAL
+  // path change triggers, not the mode toggle itself.
+  const whatIfOnRef = useRef(whatIfOn);
+  whatIfOnRef.current = whatIfOn;
+  const prevDrillRef = useRef(activeDrill);
+  useEffect(() => {
+    const prev = prevDrillRef.current;
+    prevDrillRef.current = activeDrill;
+    if (!whatIfOnRef.current) return;
+    const same = prev.length === activeDrill.length && prev.every((id, i) => id === activeDrill[i]);
+    if (!same) exitWhatIf();
+  }, [activeDrill, exitWhatIf]);
+
+  // Esc exits what-if — bound BEFORE the drill Esc below in priority: the
+  // drill handler stays quiet while what-if is on (guard there), so one Esc
+  // ends the simulation and the next one climbs the drill. Same capture-phase
+  // + overlay-guard recipe as the drill handler (see its comment).
+  useEffect(() => {
+    if (!whatIfOn) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || isEditableTarget(e.target)) return;
+      if (presentOn || compare !== null || labelEditor !== null || contextMenu !== null) return;
+      if (document.querySelector(OPEN_OVERLAY_SELECTOR) !== null) return;
+      exitWhatIf();
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [whatIfOn, presentOn, compare, labelEditor, contextMenu, exitWhatIf]);
+
   // Double-click on a group's BODY dives into it. The body is a pan surface
   // (`pointer-events: none`), so the double-click's target is the react-flow
   // PANE itself — which is exactly what separates this gesture from every
@@ -886,13 +999,16 @@ function DiagramCanvas() {
     if (activeDrill.length === 0) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || isEditableTarget(e.target)) return;
+      // What-if owns Esc while simulating (DGC-91) — its handler above exits
+      // the mode; climbing a drill level on the same keypress would jar.
+      if (whatIfOn) return;
       if (presentOn || compare !== null || labelEditor !== null || contextMenu !== null) return;
       if (document.querySelector(OPEN_OVERLAY_SELECTOR) !== null) return;
       setDrill(activeDrill.slice(0, -1));
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [activeDrill, presentOn, compare, labelEditor, contextMenu, setDrill]);
+  }, [activeDrill, whatIfOn, presentOn, compare, labelEditor, contextMenu, setDrill]);
 
   // Drop of a dragged node OR group. DGC-19 splits the outcome by where it
   // landed, hit-testing the dragged box's CENTER against the (absolute) group
@@ -1041,9 +1157,14 @@ function DiagramCanvas() {
   );
 
   return (
-    <EditContext.Provider value={editActions}>
-    <CollapseContext.Provider value={collapseActions}>
-    <div className={`app-shell${presentOn ? " presenting" : ""}${comparing ? " comparing" : ""}`}>
+    // What-if (DGC-91) nulls both action contexts: rename affordances and the
+    // ▾/▸ collapse toggles hide while simulating — the view model must not
+    // change under the dead set, and a simulation must not write the doc.
+    <EditContext.Provider value={whatIfOn ? null : editActions}>
+    <CollapseContext.Provider value={whatIfOn ? null : collapseActions}>
+    <div
+      className={`app-shell${presentOn ? " presenting" : ""}${comparing ? " comparing" : ""}${whatIfOn ? " whatif" : ""}`}
+    >
       {lastDiagram && <Picker workspace={workspace} name={lastDiagram.name} version={lastDiagram.version} />}
       {/* Drill-down breadcrumb (DGC-89) — second pill under the diagram-name
           pill; renders only while drilled. Segment click jumps to that level
@@ -1060,6 +1181,9 @@ function DiagramCanvas() {
         onChange={setPrefs}
         onResetLayout={diagramName ? handleResetLayout : undefined}
         onPresent={() => setPresentOn(true)}
+        onWhatIf={diagramName ? toggleWhatIf : undefined}
+        whatIfActive={whatIfOn}
+        whatIfDisabled={changeModeActive}
       >
         {/* Export lives in the toolbar's View cluster (DGC-94) — passed as a
             slot so it keeps its own props/dropdown state. */}
@@ -1106,6 +1230,13 @@ function DiagramCanvas() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeDragStop={(_, node) => handleNodeDragStop(node)}
+        // What-if kill simulation (DGC-91): in-mode, a node click toggles it
+        // dead; drag/connect/select are locked below — this is a simulation,
+        // not an edit. Hover association keeps working.
+        onNodeClick={onNodeClick}
+        nodesDraggable={!whatIfOn}
+        nodesConnectable={!whatIfOn}
+        elementsSelectable={!whatIfOn}
         // Hover association (DGC-100): node hover lights its edges; edge-line
         // hover lights that edge + its label.
         onNodeMouseEnter={onNodeMouseEnter}
@@ -1170,6 +1301,15 @@ function DiagramCanvas() {
       {layingOut && (
         <div className="layout-chip" role="status">
           ⋯ layout
+        </div>
+      )}
+      {/* What-if hint (DGC-91) — top-center chip: how to use the mode, plus a
+          live tally once something is dead. */}
+      {whatIfOn && (
+        <div className="whatif-hint" role="status">
+          {killResult && killResult.deadNodes.size > 0
+            ? `${killResult.deadNodes.size} node chết · ${killResult.isolatedNodes.size} bị cô lập · Esc thoát`
+            : "Click node để giả lập chết · Esc thoát"}
         </div>
       )}
       {editToast && (
