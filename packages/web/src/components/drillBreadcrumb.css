@@ -1,0 +1,68 @@
+/*
+ * Drill-down breadcrumb (DGC-89) — second pill stacked under the diagram-name
+ * pill (Picker, top-left). Same tokens-v2 chrome recipe as .picker__trigger:
+ * overlay surface + blur + elev-1, so the two pills read as one cluster.
+ * Offset = picker top (space-3) + trigger height (~31px) + space-2 gap.
+ */
+.drill-crumb {
+  position: fixed;
+  top: calc(var(--space-3) + 31px + var(--space-2));
+  left: var(--space-3);
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: min(60vw, 560px);
+  background: var(--surface-overlay);
+  border: 1px solid var(--border);
+  padding: 3px var(--space-1);
+  border-radius: var(--radius);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--elev-1);
+  font-size: var(--font-ui);
+}
+
+.drill-crumb__seg {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font: inherit;
+  padding: 3px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+  transition:
+    color var(--transition-fast) ease,
+    background-color var(--transition-fast) ease;
+}
+.drill-crumb__seg:hover {
+  color: var(--text-strong);
+  background: var(--control-hover-bg);
+}
+.drill-crumb__seg:focus-visible {
+  outline: 1.5px solid var(--accent);
+  outline-offset: -1.5px;
+}
+.drill-crumb__seg--current {
+  color: var(--text-strong);
+  font-weight: 600;
+  cursor: default;
+}
+.drill-crumb__seg--current:hover {
+  background: none;
+}
+
+.drill-crumb__sep {
+  color: var(--text-dim);
+  opacity: 0.6;
+  user-select: none;
+}
+
+/* Present mode hides all chrome; drill auto-exits on enter, but keep the
+   breadcrumb out of the one transition frame too. */
+.presenting .drill-crumb {
+  display: none;
+}
