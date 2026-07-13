@@ -154,7 +154,7 @@ export function IconChip({ icon, accent, className }: { icon: string; accent: st
 
 /** Leaf node — theme B "dark blueprint": optional icon chip + label. */
 export function ArchNode({ id, data }: NodeProps) {
-  const { label, direction, icon, color, collapsed } = data as ArchNodeData;
+  const { label, direction, icon, color, collapsed, drillExternal } = data as ArchNodeData;
   const pos = HANDLE_POSITIONS[direction] ?? HANDLE_POSITIONS.right;
   // `color` is a token *name* (e.g. "orange"); resolveColor turns it into a
   // real CSS value, always falling back to the theme accent so the chip
@@ -170,6 +170,9 @@ export function ArchNode({ id, data }: NodeProps) {
     // A collapsed group's compact representative (DGC-67): dashed border +
     // stacked shadow, styled in App.css.
     ...(collapsed === true ? ["arch-node--collapsed"] : []),
+    // Context element outside the drill focus (DGC-89): dimmed, styled in
+    // App.css, so the focused interior carries the visual weight.
+    ...(drillExternal === true ? ["arch-node--external"] : []),
   ].join(" ");
   // Long labels clamp at two lines (DGC-100) — surface the full text in a
   // styled hover tooltip ([data-full-label]::after in App.css).

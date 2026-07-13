@@ -789,6 +789,16 @@ body {
     var(--node-shadow-rest);
 }
 
+/* Context element outside the drill focus (DGC-89): dimmed so the focused
+   interior carries the visual weight; hover restores full presence (the
+   element stays live — edges, tooltip, rename, drag all keep working). */
+.arch-node--external {
+  opacity: 0.62;
+}
+.arch-node--external:hover {
+  opacity: 1;
+}
+
 /* Resting edges (DGC-97): a desaturated blueprint stroke — NOT the accent —
    so hover/selected/diff accents read as state changes instead of blending
    into an all-accent canvas (hierarchy: group < edge < node < label). */

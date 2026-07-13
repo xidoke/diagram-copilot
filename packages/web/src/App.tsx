@@ -95,6 +95,18 @@ import {
   saveCollapsed,
 } from "./render/collapse.js";
 import { CollapseContext, type CollapseActions } from "./render/CollapseContext.js";
+import {
+  breadcrumbItems,
+  drillDoc,
+  drillPathTo,
+  externalNodeIds,
+  loadDrill,
+  markExternalNodes,
+  saveDrill,
+  validateDrillPath,
+  type DrillExternalMode,
+} from "./render/drill.js";
+import { DrillBreadcrumb } from "./components/DrillBreadcrumb.js";
 import type { CompareData } from "./render/compareMode.js";
 import { ComparePane } from "./components/ComparePane.js";
 
@@ -134,6 +146,28 @@ const edgeTypes = { [ELK_EDGE_TYPE]: ElkEdge };
 
 /** Stable "no groups collapsed" set — keeps effect deps quiet when inactive. */
 const NO_COLLAPSED: ReadonlySet<string> = new Set();
+
+/** Stable "not drilled" path — keeps effect deps quiet when at root (DGC-89). */
+const NO_DRILL: readonly string[] = [];
+
+/**
+ * How the drill view renders the world outside the focus (DGC-89): both modes
+ * exist in `drillDoc` (pure, tested); "collapse" won the eyeball test — the
+ * C4-style context reps keep answering "who talks to this interior", where
+ * "hide" throws every cross-boundary edge away and strands the view.
+ */
+const DRILL_EXTERNAL_MODE: DrillExternalMode = "collapse";
+
+/**
+ * Overlays that own Esc themselves (each closes on Esc via its own listener).
+ * While any is open in the DOM, the drill Esc handler stays quiet — Esc must
+ * close the overlay, not also climb a drill level (DGC-89). App-owned
+ * overlays (present/compare/label editor/context menu) are guarded by state
+ * instead; these dropdown panels keep their open flag private, so presence in
+ * the DOM is the one signal App can read without new plumbing.
+ */
+const OPEN_OVERLAY_SELECTOR =
+  ".picker__panel, .export-menu__panel, .icon-palette__panel, .ctx-menu, .search-box";
 
 /** A node's rendered size — `width`/`height` (set by resize/override) win over the
  *  `style` size `toFlow` gives it. Used to hit-test a drop against group boxes. */
@@ -229,6 +263,38 @@ function DiagramCanvas() {
     [diagramName, toggleCollapse],
   );
 
+  // C4 drill-down (DGC-89) — VIEW state exactly like collapse above: a path
+  // of group ids from the root, per diagram, persisted to localStorage
+  // (`dgc.drill.<name>`), never to the doc or the layout sidecar. Same
+  // name-tagged state so diagram A's drill never applies to diagram B, and a
+  // freshly activated diagram restores its own saved path synchronously.
+  const [drillState, setDrillState] = useState<{ name: string; path: readonly string[] } | null>(null);
+  const drillPath = useMemo<readonly string[]>(() => {
+    if (!diagramName) return NO_DRILL;
+    if (drillState?.name === diagramName) return drillState.path;
+    return loadDrill(diagramName);
+  }, [diagramName, drillState]);
+  const setDrill = useCallback(
+    (path: readonly string[]) => {
+      if (!diagramName) return;
+      saveDrill(diagramName, path);
+      setDrillState({ name: diagramName, path });
+    },
+    [diagramName],
+  );
+  // What actually renders: the stored path degraded to its longest prefix
+  // still valid in THIS doc (deleted deepest group → its parent; broken chain
+  // → root). The stale stored value is kept, so an undo that restores the
+  // group also restores the drill — mirror of collapse's stale-id behavior.
+  const activeDrill = useMemo<readonly string[]>(
+    () => (lastDiagram ? validateDrillPath(lastDiagram.doc, drillPath) : NO_DRILL),
+    [lastDiagram, drillPath],
+  );
+  const drillItems = useMemo(
+    () => (lastDiagram && activeDrill.length > 0 ? breadcrumbItems(lastDiagram.doc, activeDrill) : []),
+    [lastDiagram, activeDrill],
+  );
+
   useEffect(() => {
     saveLayoutPrefs(prefs);
   }, [prefs]);
@@ -247,11 +313,14 @@ function DiagramCanvas() {
     }
     let stale = false;
     const { doc, options } = applyPrefs(lastDiagram.doc, prefs);
-    // Collapse (DGC-67) is a pure doc transform applied BEFORE ELK: collapsed
-    // groups become representative leaves with re-targeted, deduped edges, so
-    // the layout engine re-lays out the whole (smaller) doc — no coordinate
-    // patching. `applied` marks the representatives for the ▸ affordance.
-    const { doc: viewDoc, applied } = collapseDoc(doc, collapsed);
+    // Drill (DGC-89) then collapse (DGC-67) — both pure doc transforms applied
+    // BEFORE ELK, so the layout engine re-lays out the whole (smaller) doc
+    // with no coordinate patching. Drill focuses the view on `activeDrill`'s
+    // last group (outside world → dimmed context reps); the user's collapse
+    // set then still folds groups INSIDE the drilled view — `applied` marks
+    // those representatives for the ▸ affordance.
+    const { doc: drilledDoc, externalIds } = drillDoc(doc, activeDrill, DRILL_EXTERNAL_MODE);
+    const { doc: viewDoc, applied } = collapseDoc(drilledDoc, collapsed);
     const indicatorId = window.setTimeout(() => {
       if (!stale) setLayingOut(true);
     }, LAYOUT_INDICATOR_DELAY_MS);
@@ -260,7 +329,7 @@ function DiagramCanvas() {
         if (stale) return;
         const f = toFlow(viewDoc, graph);
         setBase({
-          nodes: markCollapsedNodes(f.nodes, applied),
+          nodes: markExternalNodes(markCollapsedNodes(f.nodes, applied), externalIds),
           edges: f.edges,
           // Which broadcast these nodes came from — flows into `flow` below and
           // is reported to the snapshot render gate after the DOM commit.
@@ -277,7 +346,7 @@ function DiagramCanvas() {
       stale = true;
       window.clearTimeout(indicatorId);
     };
-  }, [lastDiagram, prefs, collapsed]);
+  }, [lastDiagram, prefs, collapsed, activeDrill]);
 
   // Fold saved overrides onto the freshly auto-laid-out base. Runs on a
   // re-layout (`base`) and whenever `overrides` change (fetch / drag / reset) —
@@ -292,8 +361,11 @@ function DiagramCanvas() {
     const overlay = compare ? compare.right : diffOverlay;
     // A collapsed group's saved SIZE override must not inflate its compact
     // representative node — strip width/height (keep x/y) for those ids
-    // (DGC-67). Position + dirty-edge behavior is unchanged otherwise.
-    const effOverrides = pruneCollapsedSizes(overrides, collapsedNodeIds(base.nodes));
+    // (DGC-67). Drill context reps (DGC-89) are the same shape of stand-in
+    // (a group rendered as one leaf), so they get the same strip. Position +
+    // dirty-edge behavior is unchanged otherwise.
+    const repIds = new Set([...collapsedNodeIds(base.nodes), ...externalNodeIds(base.nodes)]);
+    const effOverrides = pruneCollapsedSizes(overrides, repIds);
     setFlow({
       nodes: applyDiffToNodes(applyOverrides(base.nodes, effOverrides), overlay),
       // Pass nodes so a dragged group also dirties edges touching its
@@ -341,6 +413,25 @@ function DiagramCanvas() {
   // listeners and change callbacks don't re-subscribe on every frame.
   const flowRef = useRef(flow);
   flowRef.current = flow;
+
+  // On-screen group boxes (viewport coords) for point hit-tests. Groups are
+  // pan surfaces (`pointer-events: none`), so they never show up in an
+  // `elementsFromPoint` stack — read their DOM boxes and let `groupAtPoint`
+  // pick the innermost one geometrically. Scoped to the LIVE canvas host:
+  // the compare pane renders the same node ids (DGC-88). Shared by the
+  // palette drop (DGC-18) and the drill double-click (DGC-89).
+  const collectGroupBoxes = useCallback((): GroupBox[] => {
+    const boxes: GroupBox[] = [];
+    const host: ParentNode = canvasHostRef.current ?? document;
+    for (const n of flowRef.current.nodes) {
+      if (n.type !== ARCH_GROUP_TYPE) continue;
+      const el = host.querySelector(`.react-flow__node[data-id="${CSS.escape(n.id)}"]`);
+      if (!el) continue;
+      const r = el.getBoundingClientRect();
+      boxes.push({ id: n.id, left: r.left, top: r.top, right: r.right, bottom: r.bottom });
+    }
+    return boxes;
+  }, []);
 
   // ── Hover association (DGC-100) ────────────────────────────────────────
   // One hover target feeds a DERIVED edge array: hovering a node lights up
@@ -634,22 +725,14 @@ function DiagramCanvas() {
       event.preventDefault();
       if (!diagramName) return;
       const nodes = flowRef.current.nodes;
-      // Hit-test the drop point against each group's on-screen box. Groups are
-      // pan surfaces (`pointer-events: none`) so they never show up in an
-      // `elementsFromPoint` stack — read their boxes from the DOM and let
-      // `groupAtPoint` pick the innermost one geometrically (undefined → root).
-      const boxes: GroupBox[] = [];
-      // Query inside the live canvas host only — the compare pane (DGC-88)
-      // renders the same node ids, and a document-wide query could hit those.
-      const host: ParentNode = canvasHostRef.current ?? document;
-      for (const n of nodes) {
-        if (n.type !== ARCH_GROUP_TYPE) continue;
-        const el = host.querySelector(`.react-flow__node[data-id="${CSS.escape(n.id)}"]`);
-        if (!el) continue;
-        const r = el.getBoundingClientRect();
-        boxes.push({ id: n.id, left: r.left, top: r.top, right: r.right, bottom: r.bottom });
-      }
-      const group = groupAtPoint(event.clientX, event.clientY, boxes);
+      // Hit-test the drop point against each group's on-screen box (see
+      // collectGroupBoxes). Innermost group wins; undefined → the DSL root —
+      // except while drilled (DGC-89): open canvas then means "the room
+      // you're in", so the drop targets the focus group instead of a root
+      // the drill view doesn't even show.
+      const group =
+        groupAtPoint(event.clientX, event.clientY, collectGroupBoxes()) ??
+        (activeDrill.length > 0 ? activeDrill[activeDrill.length - 1] : undefined);
       const op = buildDropNodeOp(iconId, nodes.map((n) => n.id), group);
       // Absolute flow coords of the drop point (DGC-86) — recorded so the new
       // node lands here once the broadcast returns it, instead of at ELK's spot.
@@ -663,7 +746,7 @@ function DiagramCanvas() {
         }
       });
     },
-    [diagramName, showEditToast, screenToFlowPosition],
+    [diagramName, showEditToast, screenToFlowPosition, collectGroupBoxes, activeDrill],
   );
 
   // POST an `add_edge` (optionally labelled) and toast the receipt — the shared
@@ -749,6 +832,67 @@ function DiagramCanvas() {
     },
     [postAddEdge],
   );
+
+  // ── C4 drill-down zoom (DGC-89): dbl-click a group's body → focus view ──
+  // Kept mutually exclusive with the change-visualisation modes (v1 rule):
+  // Δ/⧉ diff a WHOLE step pair and present walks whole steps — a focus view
+  // underneath either reads as missing content. Entering any of them exits
+  // the drill; while one is on, the drill gesture is ignored.
+  const changeModeActive = diffOverlay !== null || compare !== null || presentOn;
+  const activeDrillRef = useRef(activeDrill);
+  activeDrillRef.current = activeDrill;
+  useEffect(() => {
+    if (!changeModeActive) return;
+    if (activeDrillRef.current.length === 0) return;
+    setDrill([]);
+  }, [changeModeActive, setDrill]);
+
+  // Double-click on a group's BODY dives into it. The body is a pan surface
+  // (`pointer-events: none`), so the double-click's target is the react-flow
+  // PANE itself — which is exactly what separates this gesture from every
+  // element one: the title band (rename + drag handle + ▾ collapse), leaf
+  // nodes (rename), and edges (label editor, which also stops propagation)
+  // all receive their own events and never surface here as the pane. The
+  // group under the point is then found geometrically, innermost first.
+  const onCanvasDoubleClick = useCallback(
+    (event: ReactMouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element) || !target.classList.contains("react-flow__pane")) return;
+      if (!lastDiagram || changeModeActive) return;
+      const hit = groupAtPoint(event.clientX, event.clientY, collectGroupBoxes());
+      if (hit === undefined) return;
+      // The drill path is the group's full ancestor chain in the SOURCE doc,
+      // so diving into a nested group from the root view lands with complete
+      // breadcrumbs. Re-clicking the current focus's body is a no-op.
+      const path = drillPathTo(lastDiagram.doc, hit);
+      if (path === null) return;
+      if (path.length === activeDrill.length && path.every((id, i) => id === activeDrill[i])) return;
+      setDrill(path);
+    },
+    [lastDiagram, changeModeActive, activeDrill, collectGroupBoxes, setDrill],
+  );
+
+  // Esc climbs ONE drill level. Esc is a crowded key, so this only fires when
+  // the drill is actually the topmost context: text inputs keep their native
+  // Esc (editable guard); App-owned overlays win by state (present + compare
+  // are already exclusive with drill, label editor / context menu close on
+  // their own Esc); the self-closing dropdown panels own Esc inside their
+  // components, so an open panel — visible in the DOM — silences this too.
+  // CAPTURE phase: the panels close via bubble-phase document listeners, and
+  // React flushes their unmount at the microtask checkpoint BETWEEN listener
+  // invocations — a bubble listener here would see the panel already gone
+  // and wrongly pop a level on the same keypress (found in e2e).
+  useEffect(() => {
+    if (activeDrill.length === 0) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || isEditableTarget(e.target)) return;
+      if (presentOn || compare !== null || labelEditor !== null || contextMenu !== null) return;
+      if (document.querySelector(OPEN_OVERLAY_SELECTOR) !== null) return;
+      setDrill(activeDrill.slice(0, -1));
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [activeDrill, presentOn, compare, labelEditor, contextMenu, setDrill]);
 
   // Drop of a dragged node OR group. DGC-19 splits the outcome by where it
   // landed, hit-testing the dragged box's CENTER against the (absolute) group
@@ -901,6 +1045,16 @@ function DiagramCanvas() {
     <CollapseContext.Provider value={collapseActions}>
     <div className={`app-shell${presentOn ? " presenting" : ""}${comparing ? " comparing" : ""}`}>
       {lastDiagram && <Picker workspace={workspace} name={lastDiagram.name} version={lastDiagram.version} />}
+      {/* Drill-down breadcrumb (DGC-89) — second pill under the diagram-name
+          pill; renders only while drilled. Segment click jumps to that level
+          (root segment exits), Esc climbs one level (effect above). */}
+      {lastDiagram && (
+        <DrillBreadcrumb
+          diagramName={lastDiagram.name}
+          items={drillItems}
+          onJump={(index) => setDrill(activeDrill.slice(0, index + 1))}
+        />
+      )}
       <Toolbar
         prefs={prefs}
         onChange={setPrefs}
@@ -936,12 +1090,15 @@ function DiagramCanvas() {
         />
       )}
       {/* mouseover/out delegation: hover on the floating edge-label divs
-          (DGC-100) — see onCanvasMouseOver above. */}
+          (DGC-100) — see onCanvasMouseOver above. Double-click delegation:
+          a dbl-click that surfaces as the PANE is a group-body dive (DGC-89)
+          — see onCanvasDoubleClick. */}
       <div
         className="canvas-host"
         ref={canvasHostRef}
         onMouseOver={onCanvasMouseOver}
         onMouseOut={onCanvasMouseOut}
+        onDoubleClick={onCanvasDoubleClick}
       >
       <ReactFlow
         nodes={flow.nodes}

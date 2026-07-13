@@ -42,6 +42,12 @@ export interface ArchNodeData extends Record<string, unknown> {
    * it after the fact; `ArchNode` then shows the ▸ expand toggle + styling.
    */
   collapsed?: boolean;
+  /**
+   * `true` on a context element outside the drill focus (DGC-89). Never set
+   * by `toFlow` itself — `markExternalNodes` (drill.ts) stamps it after the
+   * fact; `ArchNode` then applies the dimmed external styling.
+   */
+  drillExternal?: boolean;
 }
 
 interface NodeMeta {
