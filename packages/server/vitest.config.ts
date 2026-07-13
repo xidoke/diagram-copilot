@@ -10,5 +10,10 @@ export default defineConfig({
     // files sequentially makes fs-event delivery deterministic; the whole
     // suite still finishes in seconds.
     fileParallelism: false,
+    // Bind every test HTTP server to 127.0.0.1 instead of the default `::`
+    // wildcard, so ephemeral-port servers can't be hijacked by a foreign
+    // loopback listener that grabbed the same port. See the module docblock —
+    // this is the DGC-102 /mcp 404 / empty-JSON deflake.
+    setupFiles: ["./test/setup/loopback.ts"],
   },
 });
