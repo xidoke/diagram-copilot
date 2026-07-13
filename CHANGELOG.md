@@ -5,6 +5,7 @@ Format theo [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning
 ## [Unreleased]
 
 ### Added
+- v2.0 Phase C (phần 1): chế độ what-if kill-node ⚡ — click node giả lập chết, cạnh mất tô đỏ dashed, node bị cô lập (BFS từ nguồn) tô cam, Esc về nguyên trạng; thuần visual không đụng DSL (DGC-91a, ảnh docs/demos/c1-whatif/).
 - v2.0 Phase B: C4 drill-down zoom — double-click thân group lặn xuống focus view (collapse-others + edge re-target), breadcrumb đi lên, Esc từng cấp, state bền per-diagram; không đổi grammar (DGC-89, ảnh docs/demos/b1-c4-drill/).
 - v1.4 R3+R4: panels thống nhất tokens v2 (drawer/notes/menu/present/search, chuẩn transition 140/180ms ease-out, reduced-motion) + hero polish (edge 1.5px màu riêng tách accent — hover/diff nổi bật thật, node elevation thay glow, selected ring kiểu Linear, label chip hairline) (DGC-96, DGC-97, ảnh docs/demos/r3-panels + r4-hero).
 - UX text dài (dogfood Chợ Phiên CP-12): hover edge-label làm sáng đúng line, hover node sáng mọi edge nối vào; tooltip đủ text cho label bị cắt; edge/node label wrap 2 dòng thay vì "…" — PNG export hưởng theo (DGC-100).
