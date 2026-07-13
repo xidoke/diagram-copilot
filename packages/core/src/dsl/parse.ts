@@ -102,6 +102,18 @@ export function parseDsl(dsl: string): ParseDslResult {
     return { ok: false, parseErrors, modelErrors: [] };
   }
 
+  // DGC-104: a mermaid-style arrow (`A --> B`, `A -> B`, `A => B`, `A <- B`) is
+  // NOT a lexer/parser error here — WORD accepts `-`, `=` and `<`, so the
+  // arrow's `>` peels off as the edge operator and its dash/equals residue
+  // glues onto the source name (`A --` + edge to B), or a reverse arrow is
+  // swallowed whole into a single node id (`A <- B`). The parse "succeeds" into
+  // a garbage diagram. Detect those arrow-shaped tokens on the AST and report a
+  // fix-it diagnostic instead of silently building the wrong doc.
+  collectArrowDiagnostics(result.value.lines, parseErrors);
+  if (parseErrors.length > 0) {
+    return { ok: false, parseErrors, modelErrors: [] };
+  }
+
   // AST → DiagramDoc.
   let direction: Direction = "right";
   const nodesById = new Map<string, DiagramNode>();
@@ -218,6 +230,75 @@ function collectGroupIds(lines: Line[], into: Set<string>): void {
       collectGroupIds(line.body, into);
     }
   }
+}
+
+// Mermaid-style arrows (DGC-104). arch-dsl uses a bare `>` for edges (`A > B`);
+// reaching for mermaid syntax (`A --> B`, `A -> B`, `A => B`, `A <- B`) is a
+// common mistake. Because WORD accepts `-`, `=` and `<`, such an arrow never
+// fails to lex — the `>` splits off as the edge and the dash/equals residue
+// clings to the name (`A --`), or a reverse arrow is glued whole into one node
+// id (`A <- B`). We match the arrow tokens on the mapped AST — never a blind
+// regex over raw text — so a legitimate dash *inside* a single WORD
+// (`micro-service`, `us-east-1`) is untouched: only a STANDALONE dash/equals/
+// `<-` token, sitting exactly where an edge operator was meant, trips the check.
+const EDGE_ARROW_RESIDUE = /^(?:<?-+|=+)$/; // trailing name part before an edge `>`: - -- = <- <--
+const REVERSE_ARROW = /^<-+$/; // `<-` / `<--` glued between two names (no `>` on the line)
+
+/**
+ * Recursively flag mermaid-style arrow tokens as fix-it {@link ParseError}s,
+ * recursing into group bodies. Additive: appends to `parseErrors` and never
+ * touches the grammar or a well-formed parse. See {@link EDGE_ARROW_RESIDUE}.
+ */
+function collectArrowDiagnostics(lines: Line[], parseErrors: ParseError[]): void {
+  for (const line of lines) {
+    if (!isStatement(line)) continue;
+    const parts = line.source.parts;
+    if (line.targets.length > 0) {
+      // `X <arrow> Y`: the arrow's `>` became the edge, so its dash/equals
+      // residue is the last WORD of the source name, immediately before `>`.
+      const residue = parts[parts.length - 1]!;
+      if (EDGE_ARROW_RESIDUE.test(residue)) {
+        const realSource = parts.slice(0, -1).join(" ");
+        parseErrors.push({
+          ...partPosition(line.source, parts.length - 1),
+          message: arrowMessage(`${residue}>`, realSource, joinName(line.targets[0]!)),
+        });
+      }
+    } else {
+      // No edge on this line: a reverse arrow `<-`/`<--` was glued between two
+      // names into one node/group id. Flag the first one that precedes a name.
+      for (let i = 0; i < parts.length - 1; i++) {
+        if (REVERSE_ARROW.test(parts[i]!)) {
+          // A reverse arrow points right-to-left, so the fix flips the endpoints.
+          parseErrors.push({
+            ...partPosition(line.source, i),
+            message: arrowMessage(parts[i]!, parts.slice(i + 1).join(" "), parts.slice(0, i).join(" ")),
+          });
+          break;
+        }
+      }
+    }
+    if (line.isGroup) collectArrowDiagnostics(line.body, parseErrors);
+  }
+}
+
+/**
+ * The shared "arrow is not valid — use `>`" message, with a fix-it hint naming
+ * both endpoints when we can recover them (`from`/`to` non-empty).
+ */
+function arrowMessage(arrow: string, from: string, to: string): string {
+  const hint = from !== "" && to !== "" ? ` — did you mean "${from} > ${to}"?` : "";
+  return `Mermaid-style arrow "${arrow}" is not valid here; arch-dsl uses ">" for edges${hint}`;
+}
+
+/** 1-based position of the WORD part at `index` inside a multi-word {@link Name}. */
+function partPosition(name: Name, index: number): { line: number; column: number } {
+  const cst = GrammarUtils.findNodeForProperty(name.$cstNode, "parts", index) ?? name.$cstNode;
+  if (cst === undefined) {
+    return { line: 1, column: 1 };
+  }
+  // CST ranges are 0-based (LSP convention); ParseError is 1-based.
+  return { line: cst.range.start.line + 1, column: cst.range.start.character + 1 };
 }
 
 /**
