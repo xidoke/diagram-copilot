@@ -68,6 +68,8 @@ WORKFLOW (editing an existing diagram)
    (labels may contain further colons, e.g. "ratio 2:1").
    API > Database: reads/writes
    Referencing a name that was never declared auto-creates a plain node.
+   Use ">" only — mermaid arrows ("-->", "->", "=>", "<-") are NOT valid and
+   error with a fix-it hint (write "A > B", never "A --> B").
 
 6. One-to-many edges — "Source > A, B, C" fans out into one edge per
    target (in the order written); a trailing ": label" applies to all of them.

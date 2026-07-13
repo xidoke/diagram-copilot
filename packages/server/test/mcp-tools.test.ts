@@ -93,6 +93,9 @@ describe("get_dsl_guide", () => {
     expect(text).toContain("blue, orange, green, red, purple, pink, yellow, teal, gray");
     // Points Claude at list_icons for icon ids
     expect(text).toContain("list_icons");
+    // Warns off mermaid-style arrows (DGC-104): ">" is the only edge operator.
+    expect(text.toLowerCase()).toContain("mermaid arrows");
+    expect(text).toContain('"-->"');
   });
 
   it("documents the get_diagram -> edit -> set_diagram self-correction workflow", async () => {

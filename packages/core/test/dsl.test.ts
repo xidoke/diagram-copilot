@@ -305,3 +305,89 @@ describe("parseDsl — errors", () => {
     expect(result.parseErrors[0]!.line).toBe(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Mermaid-style arrows (DGC-104). `A --> B` used to parse silently into a
+// garbage node ("A --") plus an edge, because WORD swallows the dash residue
+// once the arrow's `>` peels off as the edge operator. These assert we now
+// emit a fix-it ParseError, while legitimate dashes in names stay valid.
+// ---------------------------------------------------------------------------
+describe("parseDsl — mermaid arrow diagnostics (DGC-104)", () => {
+  it("rejects `A --> B` with a fix-it hint instead of a garbage node", () => {
+    const result = parseFail("Client --> CDN");
+    expect(result.modelErrors).toEqual([]);
+    expect(result.parseErrors).toHaveLength(1);
+    const [error] = result.parseErrors;
+    expect(error!.message).toContain('"-->"');
+    expect(error!.message).toContain(">");
+    expect(error!.message).toContain('did you mean "Client > CDN"?');
+    // Points at the stray `--` token (col 8: after "Client ").
+    expect(error!.line).toBe(1);
+    expect(error!.column).toBe(8);
+  });
+
+  it("rejects the single-dash `->` arrow", () => {
+    const [error] = parseFail("A -> B").parseErrors;
+    expect(error!.message).toContain('"->"');
+    expect(error!.message).toContain('did you mean "A > B"?');
+  });
+
+  it("rejects the fat `=>` arrow", () => {
+    const [error] = parseFail("A => B").parseErrors;
+    expect(error!.message).toContain('"=>"');
+    expect(error!.message).toContain('did you mean "A > B"?');
+  });
+
+  it("rejects a reverse `<-` arrow and flips the endpoints in the hint", () => {
+    const [error] = parseFail("A <- B").parseErrors;
+    expect(error!.message).toContain('"<-"');
+    expect(error!.message).toContain('did you mean "B > A"?');
+  });
+
+  it("rejects a reverse `<--` arrow", () => {
+    const [error] = parseFail("A <-- B").parseErrors;
+    expect(error!.message).toContain('"<--"');
+    expect(error!.message).toContain('did you mean "B > A"?');
+  });
+
+  it("rejects a bidirectional `<->` arrow (the `>` still forms an edge)", () => {
+    const [error] = parseFail("A <-> B").parseErrors;
+    expect(error!.message).toContain('"<->"');
+    expect(error!.message).toContain('did you mean "A > B"?');
+  });
+
+  it("still flags an arrow written with a fan-out and a label", () => {
+    const [error] = parseFail("A --> B, C: link").parseErrors;
+    expect(error!.message).toContain('"-->"');
+    expect(error!.message).toContain('did you mean "A > B"?');
+  });
+
+  it("flags a mermaid arrow nested inside a group body", () => {
+    const result = parseFail(["VPC {", "  A --> B", "}"].join("\n"));
+    expect(result.parseErrors).toHaveLength(1);
+    expect(result.parseErrors[0]!.line).toBe(2);
+    expect(result.parseErrors[0]!.message).toContain('"-->"');
+  });
+
+  // --- No false positives: legitimate dashes / punctuation stay valid. ---
+
+  it("does not flag a hyphenated node used as an edge source", () => {
+    const doc = parseOk("micro-service > B");
+    expect(doc.edges).toEqual([{ id: "e1", from: "micro-service", to: "B" }]);
+  });
+
+  it("does not flag a hyphenated region name as a group", () => {
+    const doc = parseOk("us-east-1 {\n}");
+    expect(doc.groups).toEqual([{ id: "us-east-1", label: "us-east-1" }]);
+  });
+
+  it("does not flag a bare dash or equals inside a plain node name", () => {
+    expect(parseOk("A - B").nodes).toEqual([{ id: "A - B", label: "A - B" }]);
+    expect(parseOk("x = y").nodes).toEqual([{ id: "x = y", label: "x = y" }]);
+  });
+
+  it("does not flag a plain `A > B` edge", () => {
+    const doc = parseOk("A > B");
+    expect(doc.edges).toEqual([{ id: "e1", from: "A", to: "B" }]);
+  });
+});
