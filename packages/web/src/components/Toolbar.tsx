@@ -52,6 +52,19 @@ export interface ToolbarProps {
   /** Enter present mode (DGC-73) — the play button; also bound to ⌘⇧P. */
   onPresent?: () => void;
   /**
+   * Toggle what-if kill-node simulation (DGC-91). Omitted → the button is
+   * hidden (no active diagram).
+   */
+  onWhatIf?: () => void;
+  /** `true` while what-if mode is on — renders the button as active. */
+  whatIfActive?: boolean;
+  /**
+   * `true` while a change-visualisation mode (Δ/⧉/present) is on — what-if
+   * is mutually exclusive with those (same v1 rule as drill, DGC-89), so the
+   * button is disabled instead of silently fighting them.
+   */
+  whatIfDisabled?: boolean;
+  /**
    * Presentational slot: extra view actions rendered at the end of the View
    * cluster — App.tsx passes the ExportMenu here so it keeps its own props
    * and dropdown state (DGC-94).
@@ -59,7 +72,16 @@ export interface ToolbarProps {
   children?: ReactNode;
 }
 
-export function Toolbar({ prefs, onChange, onResetLayout, onPresent, children }: ToolbarProps) {
+export function Toolbar({
+  prefs,
+  onChange,
+  onResetLayout,
+  onPresent,
+  onWhatIf,
+  whatIfActive,
+  whatIfDisabled,
+  children,
+}: ToolbarProps) {
   const { theme, toggleTheme } = useTheme();
   return (
     <div className="toolbar">
@@ -147,6 +169,25 @@ export function Toolbar({ prefs, onChange, onResetLayout, onPresent, children }:
             onClick={onPresent}
           >
             <ToolbarIcon svg={TOOLBAR_ICONS.present} />
+          </button>
+        )}
+        {/* What-if kill-node simulation (DGC-91) — click nodes to simulate an
+            outage; App owns the mode + dead-set state. */}
+        {onWhatIf && (
+          <button
+            type="button"
+            title={
+              whatIfDisabled
+                ? "What-if: thoát Δ/⧉/present trước"
+                : "What-if: giả lập node chết"
+            }
+            aria-label="What-if: giả lập node chết"
+            aria-pressed={whatIfActive === true}
+            disabled={whatIfDisabled === true}
+            className={`toolbar-btn${whatIfActive ? " toolbar-btn--active" : ""}`}
+            onClick={onWhatIf}
+          >
+            <ToolbarIcon svg={TOOLBAR_ICONS.whatIf} />
           </button>
         )}
         {/* Icon palette (DGC-77) — self-contained: owns its own popover + copy
