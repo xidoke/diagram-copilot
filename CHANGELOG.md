@@ -5,6 +5,7 @@ Format theo [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning
 ## [Unreleased]
 
 ### Added
+- DSL validation: mermaid-style arrows (A --> B, A -> B, A => B...) giờ ra lỗi rõ kèm gợi ý "dùng A > B" thay vì parse im lặng thành node rác; fix fixture news-feed dòng bẩn; guide MCP thêm cảnh báo (DGC-104).
 - v2.0 Phase C (phần 1): chế độ what-if kill-node ⚡ — click node giả lập chết, cạnh mất tô đỏ dashed, node bị cô lập (BFS từ nguồn) tô cam, Esc về nguyên trạng; thuần visual không đụng DSL (DGC-91a, ảnh docs/demos/c1-whatif/).
 - v2.0 Phase B: C4 drill-down zoom — double-click thân group lặn xuống focus view (collapse-others + edge re-target), breadcrumb đi lên, Esc từng cấp, state bền per-diagram; không đổi grammar (DGC-89, ảnh docs/demos/b1-c4-drill/).
 - v1.4 R3+R4: panels thống nhất tokens v2 (drawer/notes/menu/present/search, chuẩn transition 140/180ms ease-out, reduced-motion) + hero polish (edge 1.5px màu riêng tách accent — hover/diff nổi bật thật, node elevation thay glow, selected ring kiểu Linear, label chip hairline) (DGC-96, DGC-97, ảnh docs/demos/r3-panels + r4-hero).
